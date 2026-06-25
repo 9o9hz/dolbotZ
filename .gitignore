@@ -1,0 +1,14 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Python virtual environment
+.venv/
+
+# ROS2 / colcon
+build/
+install/
+log/
+
+# VSCode
+.vscode/
