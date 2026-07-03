@@ -15,7 +15,10 @@ import time
 import numpy as np
 import pytest
 
-from dolbotz.gradient_map import compute_gradient_field  # type: ignore[import]
+from dolbotz.gradient_map import (  # type: ignore[import]
+    compute_gradient_field,
+    plan_path_on_slope_field,
+)
 
 RES = 0.15  # metres — default resolution used throughout
 
@@ -149,6 +152,65 @@ class TestSlopeDeg45:
         elev = ramp_x(slope=1.0)
         _, _, _, _, slope_deg = compute_gradient_field(elev, RES)
         np.testing.assert_allclose(slope_deg[1:-1, 1:-1], 45.0, atol=0.01)
+
+
+# ---------------------------------------------------------------------------
+# plan_path_on_slope_field
+# ---------------------------------------------------------------------------
+
+class TestPlanPathOnSlopeField:
+    def test_flat_field_goes_straight(self):
+        """No obstacles → shortest path is the straight row toward target_col."""
+        slope = np.zeros((10, 10), dtype=np.float32)
+        path = plan_path_on_slope_field(slope, start=(5, 0), target_col=9)
+        assert path is not None
+        assert path[0] == (5, 0)
+        assert path[-1][1] == 9
+        assert all(r == 5 for r, _ in path)
+
+    def test_routes_around_localized_steep_patch(self):
+        """A steep patch blocking only the middle rows should be detoured around."""
+        h, w = 10, 10
+        elev = np.zeros((h, w), dtype=np.float32)
+        elev[3:7, 4:7] = 50.0  # steep wall, but only in rows 3-6
+        _, _, _, _, slope_deg = compute_gradient_field(elev, RES)
+
+        path = plan_path_on_slope_field(slope_deg, start=(5, 0), target_col=9,
+                                         max_slope_deg=30.0)
+        assert path is not None
+        assert path[0] == (5, 0)
+        assert path[-1][1] == 9
+        # every visited cell must respect the slope limit
+        for r, c in path:
+            assert slope_deg[r, c] <= 30.0
+
+    def test_returns_none_when_fully_blocked(self):
+        """A steep wall spanning every row is impassable → no path exists."""
+        h, w = 10, 10
+        elev = np.zeros((h, w), dtype=np.float32)
+        elev[:, 6:] = 100.0  # every row blocked from column 6 onward
+        _, _, _, _, slope_deg = compute_gradient_field(elev, RES)
+
+        path = plan_path_on_slope_field(slope_deg, start=(5, 0), target_col=9,
+                                         max_slope_deg=30.0)
+        assert path is None
+
+    def test_returns_none_when_start_impassable(self):
+        slope = np.full((10, 10), 45.0, dtype=np.float32)
+        path = plan_path_on_slope_field(slope, start=(5, 0), target_col=9,
+                                         max_slope_deg=30.0)
+        assert path is None
+
+    def test_raises_on_start_out_of_bounds(self):
+        slope = np.zeros((10, 10), dtype=np.float32)
+        with pytest.raises(ValueError):
+            plan_path_on_slope_field(slope, start=(20, 0), target_col=9)
+
+    def test_target_col_beyond_grid_is_clamped(self):
+        slope = np.zeros((10, 10), dtype=np.float32)
+        path = plan_path_on_slope_field(slope, start=(5, 0), target_col=999)
+        assert path is not None
+        assert path[-1][1] == 9  # clamped to last column
 
 
 # ---------------------------------------------------------------------------
