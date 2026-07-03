@@ -1,0 +1,308 @@
+"""
+Unit tests for the ROS-free pure functions in dolbotz/elevation_map.py.
+
+Run:
+    pytest test/test_elevation_map.py -v
+
+Mirrors the style of test/test_gradient_field.py: synthetic inputs with a
+known analytical answer, no numerical mystery.
+"""
+
+import numpy as np
+import pytest
+from scipy.spatial.transform import Rotation
+
+from dolbotz.elevation_map import (  # type: ignore[import]
+    R_BODY_TO_OPTICAL,
+    backproject_depth_to_points,
+    camera_body_to_level_matrix,
+    depth_to_meters,
+    points_to_elevation_grid,
+    roll_pitch_from_accel_body,
+    update_complementary_filter,
+)
+
+G = 9.81
+
+
+# ---------------------------------------------------------------------------
+# depth_to_meters
+# ---------------------------------------------------------------------------
+
+class TestDepthToMeters:
+    def test_uint16_millimetres_converted(self):
+        depth_mm = np.array([[1000, 2500], [0, 65535]], dtype=np.uint16)
+        depth_m = depth_to_meters(depth_mm)
+        np.testing.assert_allclose(depth_m, [[1.0, 2.5], [0.0, 65.535]], atol=1e-6)
+
+    def test_float_passthrough(self):
+        depth_m_in = np.array([[1.2, 3.4]], dtype=np.float32)
+        assert np.allclose(depth_to_meters(depth_m_in), depth_m_in)
+
+
+# ---------------------------------------------------------------------------
+# backproject_depth_to_points
+# ---------------------------------------------------------------------------
+
+class TestBackprojectDepthToPoints:
+    def test_center_pixel_at_optical_axis(self):
+        h, w = 4, 4
+        fx = fy = 100.0
+        cx, cy = 1.5, 1.5
+        depth = np.full((h, w), 2.0, dtype=np.float32)
+        pts, valid = backproject_depth_to_points(depth, fx, fy, cx, cy, 0.1, 5.0)
+        # pixel (cx, cy) exactly on the optical axis -> X=Y=0
+        np.testing.assert_allclose(pts[1, 1] if cx == 1 else pts[int(cy), int(cx)], pts[int(cy), int(cx)])
+        x, y, z = pts[1, 2]  # v=1 row, u=2 col -> near center-ish; check formula directly instead
+        expected_x = (2 - cx) * 2.0 / fx
+        expected_y = (1 - cy) * 2.0 / fy
+        assert x == pytest.approx(expected_x)
+        assert y == pytest.approx(expected_y)
+        assert z == pytest.approx(2.0)
+        assert valid.all()
+
+    def test_out_of_range_depth_masked_invalid(self):
+        depth = np.array([[0.05, 1.0, 10.0, np.nan]], dtype=np.float32)
+        _, valid = backproject_depth_to_points(depth, 100, 100, 0, 0, 0.1, 5.0)
+        assert list(valid[0]) == [False, True, False, False]
+
+
+# ---------------------------------------------------------------------------
+# roll_pitch_from_accel_body — round trip against the construction rotation
+# ---------------------------------------------------------------------------
+
+class TestRollPitchFromAccelBody:
+    @pytest.mark.parametrize("roll_deg,pitch_deg", [
+        (0, 0), (15, 0), (0, 15), (-20, 10), (30, -25), (5, 5),
+    ])
+    def test_round_trip(self, roll_deg, pitch_deg):
+        roll, pitch = np.radians(roll_deg), np.radians(pitch_deg)
+        r_construction = Rotation.from_euler('xyz', [roll, pitch, 0])
+        accel_body = r_construction.inv().apply([0, 0, G])
+
+        r2, p2 = roll_pitch_from_accel_body(accel_body)
+        assert r2 == pytest.approx(roll, abs=1e-6)
+        assert p2 == pytest.approx(pitch, abs=1e-6)
+
+    def test_level_reads_pure_z(self):
+        roll, pitch = roll_pitch_from_accel_body(np.array([0.0, 0.0, G]))
+        assert roll == pytest.approx(0.0, abs=1e-9)
+        assert pitch == pytest.approx(0.0, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# update_complementary_filter
+# ---------------------------------------------------------------------------
+
+class TestUpdateComplementaryFilter:
+    def test_first_call_returns_accel_only_estimate(self):
+        accel_body = Rotation.from_euler('xyz', [0.1, 0.2, 0]).inv().apply([0, 0, G])
+        roll, pitch = update_complementary_filter(
+            None, None, gyro_body=np.zeros(3), accel_body=accel_body, dt=0.05)
+        expected_roll, expected_pitch = roll_pitch_from_accel_body(accel_body)
+        assert roll == pytest.approx(expected_roll)
+        assert pitch == pytest.approx(expected_pitch)
+
+    def test_static_state_matches_accel_alone(self):
+        """No rotation, no gyro signal -> filter should converge to (and stay at) the accel angle."""
+        accel_body = Rotation.from_euler('xyz', [0.15, -0.1, 0]).inv().apply([0, 0, G])
+        roll, pitch = None, None
+        for _ in range(50):
+            roll, pitch = update_complementary_filter(
+                roll, pitch, gyro_body=np.zeros(3), accel_body=accel_body, dt=0.05, alpha=0.97)
+        expected_roll, expected_pitch = roll_pitch_from_accel_body(accel_body)
+        assert roll == pytest.approx(expected_roll, abs=1e-4)
+        assert pitch == pytest.approx(expected_pitch, abs=1e-4)
+
+    def test_gyro_bias_does_not_diverge(self):
+        """A constant gyro bias would make pure integration drift forever;
+        the accel term must anchor the estimate so it stays bounded near the true angle."""
+        true_roll, true_pitch = np.radians(10.0), np.radians(-5.0)
+        accel_body = Rotation.from_euler('xyz', [true_roll, true_pitch, 0]).inv().apply([0, 0, G])
+        gyro_bias = np.array([0.2, -0.15, 0.0])  # rad/s, constant erroneous bias
+
+        roll, pitch = None, None
+        dt = 0.02
+        for _ in range(2000):  # 40 s of simulated time
+            roll, pitch = update_complementary_filter(
+                roll, pitch, gyro_body=gyro_bias, accel_body=accel_body, dt=dt, alpha=0.97)
+
+        # Pure integration of the bias alone (no accel correction) would have drifted by
+        # bias * total_time = 0.2 * 40 = 8 rad — many multiples of a full turn.
+        # With the accel anchor, the estimate must stay close to the true tilt instead.
+        assert abs(roll - true_roll) < np.radians(15)
+        assert abs(pitch - true_pitch) < np.radians(15)
+
+    def test_reduces_noise_vs_accel_alone(self):
+        """Noisy accel + clean gyro: filtered estimate should track the true angle
+        more tightly (lower RMS error) than using the noisy accel reading directly."""
+        rng = np.random.default_rng(0)
+        true_roll, true_pitch = np.radians(8.0), np.radians(3.0)
+        dt = 0.02
+        n = 300
+
+        roll, pitch = None, None
+        filt_errors = []
+        raw_errors = []
+        for _ in range(n):
+            noisy_accel = Rotation.from_euler('xyz', [true_roll, true_pitch, 0]).inv().apply([0, 0, G])
+            noisy_accel = noisy_accel + rng.normal(scale=0.6, size=3)  # vibration noise
+            gyro_body = np.zeros(3)  # stationary: true rate is zero
+
+            roll, pitch = update_complementary_filter(
+                roll, pitch, gyro_body=gyro_body, accel_body=noisy_accel, dt=dt, alpha=0.9)
+            filt_errors.append((roll - true_roll) ** 2 + (pitch - true_pitch) ** 2)
+
+            raw_roll, raw_pitch = roll_pitch_from_accel_body(noisy_accel)
+            raw_errors.append((raw_roll - true_roll) ** 2 + (raw_pitch - true_pitch) ** 2)
+
+        filt_rms = np.sqrt(np.mean(filt_errors[50:]))  # skip warm-up transient
+        raw_rms = np.sqrt(np.mean(raw_errors[50:]))
+        assert filt_rms < raw_rms
+
+
+# ---------------------------------------------------------------------------
+# camera_body_to_level_matrix + points_to_elevation_grid
+# ---------------------------------------------------------------------------
+
+CAMERA_HEIGHT = 0.5
+RES = 0.15
+
+
+def _level_matrix(dyn_roll_deg, dyn_pitch_deg, mount_roll_deg=0.0, mount_pitch_deg=10.0):
+    """Simulate the camera's own onboard IMU total tilt = mount + dynamic chassis lean."""
+    mount_roll, mount_pitch = np.radians(mount_roll_deg), np.radians(mount_pitch_deg)
+    dyn_roll, dyn_pitch = np.radians(dyn_roll_deg), np.radians(dyn_pitch_deg)
+    r_total = (Rotation.from_euler('xyz', [mount_roll, mount_pitch, 0])
+               * Rotation.from_euler('xyz', [dyn_roll, dyn_pitch, 0]))
+    accel_body = r_total.inv().apply([0, 0, G])
+    roll_meas, pitch_meas = roll_pitch_from_accel_body(accel_body)
+    return camera_body_to_level_matrix(roll_meas, pitch_meas, mount_roll, mount_pitch)
+
+
+def _synth_optical_points(r_level, level_xyz_cam_relative):
+    """Inverse of the elevation pipeline: given desired (x_fwd, y_left, z_rel-to-camera)
+    points in the level frame, synthesize the camera-optical-frame points a real
+    depth camera would report for them."""
+    pts_body = level_xyz_cam_relative @ np.linalg.inv(r_level).T
+    pts_optical = pts_body @ R_BODY_TO_OPTICAL.T
+    return pts_optical
+
+
+class TestCameraBodyToLevelMatrix:
+    def test_flat_floor_reads_zero_regardless_of_mount_tilt(self):
+        """A perfectly level chassis looking at a flat floor must read elevation ~= 0,
+        even though the camera itself is physically tilted by the mount offset."""
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
+        level_pts = np.array([
+            [1.0, 0.0, -CAMERA_HEIGHT],
+            [1.0, 0.8, -CAMERA_HEIGHT],
+            [2.0, -0.5, -CAMERA_HEIGHT],
+        ])
+        optical_pts = _synth_optical_points(r_level, level_pts)
+
+        recovered = (optical_pts @ R_BODY_TO_OPTICAL) @ r_level.T
+        elevation = recovered[:, 2] + CAMERA_HEIGHT
+        np.testing.assert_allclose(elevation, 0.0, atol=1e-5)
+
+    def test_flat_floor_still_zero_with_extra_dynamic_tilt(self):
+        """Chassis dynamically pitched 8 deg on top of the fixed 10 deg mount tilt —
+        elevation of a flat floor must still read ~0 once mount offset is subtracted."""
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=8, mount_pitch_deg=10.0)
+        level_pts = np.array([[1.0, 0.0, -CAMERA_HEIGHT], [2.0, 0.0, -CAMERA_HEIGHT]])
+        optical_pts = _synth_optical_points(r_level, level_pts)
+        recovered = (optical_pts @ R_BODY_TO_OPTICAL) @ r_level.T
+        elevation = recovered[:, 2] + CAMERA_HEIGHT
+        np.testing.assert_allclose(elevation, 0.0, atol=1e-5)
+
+
+class TestPointsToElevationGrid:
+    def _make_points(self, r_level, level_pts_cam_relative):
+        n = level_pts_cam_relative.shape[0]
+        h, w = 1, n  # arrange as a 1-row synthetic "depth image"
+        optical_pts = _synth_optical_points(r_level, level_pts_cam_relative)
+        points_optical = optical_pts.reshape(h, w, 3).astype(np.float32)
+        valid = np.ones((h, w), dtype=bool)
+        return points_optical, valid
+
+    def test_flat_floor_grid_is_uniformly_zero(self):
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
+        xs = np.linspace(0.2, 3.8, 10)
+        level_pts = np.stack([xs, np.zeros_like(xs), np.full_like(xs, -CAMERA_HEIGHT)], axis=-1)
+        points_optical, valid = self._make_points(r_level, level_pts)
+
+        grid = points_to_elevation_grid(
+            points_optical, valid, r_level, CAMERA_HEIGHT, RES,
+            grid_forward_m=4.0, grid_width_m=4.0)
+
+        observed = grid[~np.isnan(grid)]
+        assert observed.size > 0
+        np.testing.assert_allclose(observed, 0.0, atol=1e-4)
+
+    def test_uphill_forward_increases_elevation_with_column(self):
+        """Uphill going forward (+x) must show up as elevation increasing with column,
+        matching gradient_map.py's gx = dH/dx > 0 = uphill forward convention."""
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
+        xs = np.linspace(0.2, 3.8, 10)
+        slope = 0.3
+        zs = slope * xs - CAMERA_HEIGHT
+        level_pts = np.stack([xs, np.zeros_like(xs), zs], axis=-1)
+        points_optical, valid = self._make_points(r_level, level_pts)
+
+        grid = points_to_elevation_grid(
+            points_optical, valid, r_level, CAMERA_HEIGHT, RES,
+            grid_forward_m=4.0, grid_width_m=4.0)
+
+        row = grid.shape[0] // 2
+        cols_with_data = np.where(~np.isnan(grid[row]))[0]
+        values = grid[row, cols_with_data]
+        assert np.all(np.diff(values) >= -1e-6)  # non-decreasing as column (== +x) increases
+
+    def test_uphill_left_increases_elevation_as_row_decreases(self):
+        """Uphill going left (+y) must show up as elevation increasing as row decreases,
+        matching row 0 = max y = left side and gy = dH/dy > 0 = uphill left."""
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
+        ys = np.linspace(-1.8, 1.8, 10)
+        slope = 0.3
+        zs = slope * ys - CAMERA_HEIGHT
+        level_pts = np.stack([np.full_like(ys, 1.5), ys, zs], axis=-1)
+        points_optical, valid = self._make_points(r_level, level_pts)
+
+        grid = points_to_elevation_grid(
+            points_optical, valid, r_level, CAMERA_HEIGHT, RES,
+            grid_forward_m=4.0, grid_width_m=4.0)
+
+        col = grid.shape[1] // 2
+        rows_with_data = np.where(~np.isnan(grid[:, col]))[0]
+        values = grid[rows_with_data, col]
+        # row increases as y decreases -> elevation (which grows with y) must DEcrease as row increases
+        assert np.all(np.diff(values) <= 1e-6)
+
+    def test_out_of_grid_points_are_masked(self):
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
+        level_pts = np.array([
+            [1.0, 0.0, -CAMERA_HEIGHT],     # in bounds
+            [100.0, 0.0, -CAMERA_HEIGHT],   # far beyond grid_forward_m
+            [1.0, 100.0, -CAMERA_HEIGHT],   # far beyond grid_width_m
+        ])
+        points_optical, valid = self._make_points(r_level, level_pts)
+        grid = points_to_elevation_grid(
+            points_optical, valid, r_level, CAMERA_HEIGHT, RES,
+            grid_forward_m=4.0, grid_width_m=4.0)
+        assert np.count_nonzero(~np.isnan(grid)) == 1
+
+    def test_median_aggregation_ignores_outlier(self):
+        """Several points in the same cell plus one wild outlier -> median, not mean/max."""
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
+        base = np.array([1.0, 0.0])
+        zs_rel = np.array([-0.02, 0.0, 0.01, 0.02, 5.0]) - CAMERA_HEIGHT  # last one is a wild outlier
+        level_pts = np.stack([np.full(5, base[0]), np.full(5, base[1]), zs_rel], axis=-1)
+        points_optical, valid = self._make_points(r_level, level_pts)
+
+        grid = points_to_elevation_grid(
+            points_optical, valid, r_level, CAMERA_HEIGHT, RES,
+            grid_forward_m=4.0, grid_width_m=4.0)
+
+        observed = grid[~np.isnan(grid)]
+        assert observed.size == 1
+        assert observed[0] == pytest.approx(0.01, abs=1e-6)  # median of [-0.02,0,0.01,0.02,5.0] == 0.01
