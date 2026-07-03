@@ -9,7 +9,8 @@ package_name = "dolbotz"
 setup(
     name=package_name,
     version="0.0.1",
-    packages=find_packages(exclude=["test"]),
+    package_dir={"": "src"},
+    packages=find_packages(where="src", exclude=["test"]),
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
@@ -27,6 +28,9 @@ setup(
     entry_points={
         "console_scripts": [
             "slope_decision = dolbotz.slope_decision:main",
+            "slope_drive = dolbotz.slope_drive:main",
+            "arm_pickup = dolbotz.arm_pickup:main",
+            "gradient_map = dolbotz.gradient_map:main",
         ],
     },
 )
