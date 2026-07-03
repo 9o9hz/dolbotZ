@@ -1,6 +1,7 @@
 # Python cache
 __pycache__/
 *.pyc
+*.egg-info/
 
 # Python virtual environment
 .venv/
