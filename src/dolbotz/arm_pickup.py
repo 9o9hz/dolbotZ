@@ -37,8 +37,8 @@ class ArmPickupNode(Node):
     def __init__(self):
         super().__init__('arm_pickup_node')
 
-        self.declare_parameter('model_path', '')
-        self.declare_parameter('target_class', 'supply_box')
+        self.declare_parameter('model_path', '/home/j/dolbotZ/supplybest.pt')
+        self.declare_parameter('target_class', 'supplybox')
         self.declare_parameter('conf_threshold', 0.5)
         self.declare_parameter('depth_roi_radius', 5)
         self.declare_parameter('max_depth_m', 2.0)
