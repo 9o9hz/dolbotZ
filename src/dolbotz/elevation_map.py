@@ -1,65 +1,65 @@
 """
-Elevation Map Node — publishes /terrain/elevation_map, the input gradient_map.py expects.
+고도 맵 노드 — gradient_map.py가 입력으로 기대하는 /terrain/elevation_map을 게시한다.
 
-Pure computation is ROS-free so it can be unit-tested and benchmarked standalone
-(see module docstring of gradient_map.py for the downstream consumer and the
-grid coordinate convention this node must match: col=+x forward, row=-y,
-row 0 = max y = robot left side).
+순수 계산 부분은 ROS에 의존하지 않으므로 단독으로 단위 테스트 및 벤치마크가
+가능하다 (다운스트림 소비자와 이 노드가 맞춰야 하는 그리드 좌표 규약은
+gradient_map.py의 모듈 docstring 참고: col=+x 전방, row=-y,
+row 0 = 최대 y = 로봇 왼쪽).
 
-Design notes (see project history / howtorun.md for the full discussion):
+설계 노트 (전체 논의는 프로젝트 이력 / howtorun.md 참고):
 
-  * The IMU is the depth camera's own onboard sensor (frame_id
-    'camera_imu_optical_frame'), not a separate chassis-mounted IMU. Its raw
-    accel/gyro therefore measure the CAMERA's own absolute tilt, which is the
-    fixed mounting tilt (camera_roll/pitch_offset_deg) *combined* with
-    whatever the chassis is currently doing on the terrain. We must subtract
-    the known fixed mount tilt to recover the chassis's own dynamic lean —
-    otherwise a perfectly flat, level floor would read as sloped just because
-    the camera is mounted looking down at camera_pitch_offset_deg.
+  * IMU는 뎁스 카메라 자체 내장 센서이며 (frame_id
+    'camera_imu_optical_frame'), 별도의 섀시 장착 IMU가 아니다. 따라서 원시
+    가속도/자이로 값은 카메라 자체의 절대 기울기를 측정하며, 이는 고정된
+    장착 기울기(camera_roll/pitch_offset_deg)와 현재 섀시가 지형 위에서
+    하는 동작이 *결합된* 값이다. 알려진 고정 장착 기울기를 빼서 섀시 자체의
+    동적 기울어짐을 복원해야 한다 — 그렇지 않으면 완전히 평평하고 수평인
+    바닥도 카메라가 camera_pitch_offset_deg만큼 아래를 보도록 장착되어
+    있다는 이유만으로 경사진 것으로 읽힌다.
 
-  * yaw is never estimated at all (no magnetometer, no gyro-Z integration) —
-    only roll/pitch are tracked as two independent scalars via a
-    complementary filter fed by the camera's own raw gyro + accel. This keeps
-    the output grid's +x locked to the robot's current heading every frame
-    (matches gradient_map.py's per-frame, non-accumulating grid), with no
-    separate "strip yaw" step needed since yaw was never part of the state.
+  * yaw는 전혀 추정하지 않는다 (마그네토미터도, 자이로 Z축 적분도 없음) —
+    roll/pitch만 카메라 자체의 원시 자이로 + 가속도 값을 입력받는 상보
+    필터를 통해 두 개의 독립 스칼라로 추적한다. 이렇게 하면 출력 그리드의
+    +x가 매 프레임마다 로봇의 현재 헤딩에 고정된다 (gradient_map.py의
+    프레임별 비누적 그리드와 일치), yaw가 애초에 상태의 일부가 아니었으므로
+    별도의 "strip yaw" 단계도 필요 없다.
 
-  * Tilt-from-accelerometer and the body<->optical axis remap were verified
-    by round-trip synthetic checks (known tilt -> synthetic accel -> recovered
-    tilt; known level/sloped floor -> synthetic depth points -> recovered
-    elevation) before being written up as the formulas below.
+  * 가속도계로부터의 기울기 계산과 body<->optical 축 재매핑은 왕복 합성
+    검증(알려진 기울기 -> 합성 가속도 -> 복원된 기울기; 알려진 평평한/경사진
+    바닥 -> 합성 뎁스 포인트 -> 복원된 고도)을 거친 후 아래 공식들로
+    정리되었다.
 
-Subscribed topics:
-  /camera/camera/depth/image_rect_raw   sensor_msgs/Image        (16UC1 mm or 32FC1 m)
+구독 토픽:
+  /camera/camera/depth/image_rect_raw   sensor_msgs/Image        (16UC1 mm 또는 32FC1 m)
   /camera/camera/depth/camera_info      sensor_msgs/CameraInfo   (fx, fy, cx, cy)
-  /camera/camera/imu                    sensor_msgs/Imu          (raw gyro + accel only)
+  /camera/camera/imu                    sensor_msgs/Imu          (원시 자이로 + 가속도만)
 
-Published topics:
-  /terrain/elevation_map   sensor_msgs/Image  32FC1  (metres; NaN = unobserved cell)
+게시 토픽:
+  /terrain/elevation_map   sensor_msgs/Image  32FC1  (미터 단위; NaN = 관측되지 않은 셀)
 
-Parameters (mount offsets are placeholders — see PLACEHOLDER comments below):
-  camera_height_m          float  default 0.5    — camera height above ground [m], unmeasured
-  camera_pitch_offset_deg  float  default 10.0   — fixed camera mount pitch (nose-down positive), unmeasured
-  camera_roll_offset_deg   float  default 0.0    — fixed camera mount roll, unmeasured
-  resolution_m             float  default 0.15   — grid cell size [m], matches gradient_map.py default
-  grid_forward_m           float  default 4.0    — forward map extent [m]
-  grid_width_m             float  default 4.0    — lateral map extent [m] (±grid_width_m/2)
-  min_depth_m               float  default 0.3
-  max_depth_m               float  default 4.0
-  complementary_filter_alpha float default 0.97  — PLACEHOLDER, needs real-drive tuning
-  bench_log_hz              float  default 1.0
+파라미터 (장착 오프셋은 임시값 — 아래 PLACEHOLDER 주석 참고):
+  camera_height_m          float  기본값 0.5    — 지면 위 카메라 높이 [m], 미실측
+  camera_pitch_offset_deg  float  기본값 10.0   — 고정 카메라 장착 피치 (기수 하향이 양수), 미실측
+  camera_roll_offset_deg   float  기본값 0.0    — 고정 카메라 장착 롤, 미실측
+  resolution_m             float  기본값 0.15   — 그리드 셀 크기 [m], gradient_map.py 기본값과 일치
+  grid_forward_m           float  기본값 4.0    — 전방 맵 범위 [m]
+  grid_width_m             float  기본값 4.0    — 측면 맵 범위 [m] (±grid_width_m/2)
+  min_depth_m               float  기본값 0.3
+  max_depth_m               float  기본값 4.0
+  complementary_filter_alpha float 기본값 0.97  — PLACEHOLDER, 실제 주행 튜닝 필요
+  bench_log_hz              float  기본값 1.0
 """
 
 import numpy as np
 from scipy.spatial.transform import Rotation
 
 # ---------------------------------------------------------------------------
-# Fixed axis-convention constants
+# 고정 축 규약 상수
 # ---------------------------------------------------------------------------
 
-# Body frame (x=forward, y=left, z=up, matches gradient_map.py/slope_drive.py)
-# to camera optical frame (x=right, y=down, z=forward). Identical constant to
-# slope_drive.py's R_body_to_optical, verified there by axis substitution.
+# Body 프레임(x=전방, y=왼쪽, z=위, gradient_map.py/slope_drive.py와 일치)에서
+# 카메라 optical 프레임(x=오른쪽, y=아래, z=전방)으로. slope_drive.py의
+# R_body_to_optical과 동일한 상수이며, 그곳에서 축 치환으로 검증됨.
 R_BODY_TO_OPTICAL = np.array([
     [0., -1., 0.],
     [0., 0., -1.],
@@ -72,15 +72,15 @@ COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER = 0.97
 
 
 # ---------------------------------------------------------------------------
-# Pure computation — no ROS dependency
+# 순수 계산 — ROS 의존성 없음
 # ---------------------------------------------------------------------------
 
 def depth_to_meters(depth_img: np.ndarray) -> np.ndarray:
-    """Convert a raw depth image to float32 metres.
+    """원시 뎁스 이미지를 float32 미터 단위로 변환한다.
 
-    16UC1 images (RealSense default) are in millimetres; anything else is
-    assumed to already be in metres. Mirrors slope_decision.py's
-    _depth_to_meters helper.
+    16UC1 이미지(RealSense 기본값)는 밀리미터 단위이며, 그 외에는 이미
+    미터 단위라고 가정한다. slope_decision.py의 _depth_to_meters 헬퍼와
+    동일한 로직.
     """
     if depth_img.dtype == np.uint16:
         return depth_img.astype(np.float32) * 0.001
@@ -92,19 +92,19 @@ def backproject_depth_to_points(
     fx: float, fy: float, cx: float, cy: float,
     min_depth_m: float, max_depth_m: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Vectorized pinhole back-projection of a depth image to camera-optical 3D points.
+    """뎁스 이미지를 카메라 optical 3D 포인트로 벡터화된 핀홀 역투영한다.
 
     Args:
-        depth_m: (H, W) depth in metres.
-        fx, fy, cx, cy: pinhole intrinsics (from CameraInfo.k).
-        min_depth_m, max_depth_m: valid depth range; outside this (or
-            non-finite) depth is marked invalid.
+        depth_m: (H, W) 미터 단위 뎁스.
+        fx, fy, cx, cy: 핀홀 내부 파라미터 (CameraInfo.k에서 가져옴).
+        min_depth_m, max_depth_m: 유효 뎁스 범위; 이 범위를 벗어나거나
+            (또는 유한하지 않은) 뎁스는 무효로 표시된다.
 
     Returns:
-        points_optical: (H, W, 3) float32 — (X_opt=right, Y_opt=down, Z_opt=forward) metres.
-                         Invalid cells are left as whatever depth_m held (NaN-safe
-                         since callers must consult `valid`).
-        valid: (H, W) bool mask.
+        points_optical: (H, W, 3) float32 — (X_opt=오른쪽, Y_opt=아래, Z_opt=전방) 미터.
+                         무효 셀은 depth_m 값 그대로 남아있음 (호출자가 반드시
+                         `valid`를 확인해야 하므로 NaN이어도 안전).
+        valid: (H, W) bool 마스크.
     """
     h, w = depth_m.shape
     us, vs = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
@@ -119,14 +119,14 @@ def backproject_depth_to_points(
 
 
 def roll_pitch_from_accel_body(accel_body: np.ndarray) -> tuple[float, float]:
-    """Estimate (roll, pitch) [rad] from a body-frame (x-fwd,y-left,z-up) accelerometer reading.
+    """body 프레임(x-전방,y-왼쪽,z-위) 가속도계 값으로부터 (roll, pitch) [rad]를 추정한다.
 
-    Standard two-axis tilt formula: a stationary accelerometer reads
-    approximately +g along whichever local axis currently points "up".
-    roll is rotation about the forward (x) axis (positive = right side down);
-    pitch is rotation about the left (y) axis (positive = nose down).
-    Verified by round-trip synthetic test against the construction rotation
-    Rotation.from_euler('xyz', [roll, pitch, 0]).
+    표준 2축 기울기 공식: 정지 상태의 가속도계는 현재 "위"를 향하는
+    로컬 축을 따라 대략 +g를 읽는다.
+    roll은 전방(x) 축을 중심으로 한 회전(양수 = 오른쪽이 아래로);
+    pitch는 왼쪽(y) 축을 중심으로 한 회전(양수 = 기수가 아래로).
+    구성 회전 Rotation.from_euler('xyz', [roll, pitch, 0])에 대한 왕복
+    합성 테스트로 검증됨.
     """
     ax, ay, az = accel_body
     roll = np.arctan2(ay, az)
@@ -142,13 +142,13 @@ def update_complementary_filter(
     dt: float,
     alpha: float = COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER,
 ) -> tuple[float, float]:
-    """One complementary-filter step for (roll, pitch), no yaw.
+    """(roll, pitch)에 대한 상보 필터 1스텝, yaw 없음.
 
     angle = alpha * (prev_angle + gyro_rate * dt) + (1 - alpha) * accel_angle
 
-    gyro_body[0]/[1] are the roll-rate/pitch-rate about the body x/y axes.
-    On the first call (prev_roll is None), returns the accel-only estimate —
-    there is no gyro integration to blend yet.
+    gyro_body[0]/[1]은 body x/y 축을 중심으로 한 roll-rate/pitch-rate이다.
+    첫 호출 시(prev_roll이 None), 아직 블렌딩할 자이로 적분값이 없으므로
+    가속도계만으로 추정한 값을 반환한다.
     """
     accel_roll, accel_pitch = roll_pitch_from_accel_body(accel_body)
 
@@ -166,19 +166,19 @@ def camera_body_to_level_matrix(
     roll_offset: float,
     pitch_offset: float,
 ) -> np.ndarray:
-    """Rotation matrix mapping camera-BODY-frame vectors to the level output frame.
+    """카메라-BODY 프레임 벡터를 수평 출력 프레임으로 매핑하는 회전 행렬.
 
-    `roll_meas`/`pitch_meas` is the camera's own total measured tilt (mount +
-    chassis dynamic lean combined, from update_complementary_filter).
-    `roll_offset`/`pitch_offset` is the fixed mount tilt (camera_roll/pitch_offset_deg,
-    in radians). The result first undoes the total measured tilt (back to a
-    nominal, hypothetically-level *mounted* camera frame), then undoes the
-    fixed mount tilt on top of that (to the true chassis-level frame) — so
-    the output frame's +x tracks the chassis's current heading, leveled for
-    gravity, with the known mount tilt subtracted out.
+    `roll_meas`/`pitch_meas`는 카메라 자체의 총 측정 기울기이다(장착 +
+    섀시 동적 기울어짐이 결합됨, update_complementary_filter에서 옴).
+    `roll_offset`/`pitch_offset`은 고정 장착 기울기이다
+    (camera_roll/pitch_offset_deg, 라디안 단위). 결과값은 먼저 총 측정
+    기울기를 되돌리고(가상의 수평 *장착된* 카메라 프레임으로), 그 다음
+    고정 장착 기울기를 되돌린다(실제 섀시 수평 프레임으로) — 따라서 출력
+    프레임의 +x는 섀시의 현재 헤딩을 따르며, 중력에 대해 수평이 맞춰지고,
+    알려진 장착 기울기가 빠진 상태가 된다.
 
-    Verified: on a flat floor, this matrix yields elevation ~= 0 regardless
-    of camera mount tilt, as long as the chassis itself is level.
+    검증됨: 평평한 바닥에서는, 섀시 자체가 수평이기만 하면 카메라 장착
+    기울기와 무관하게 이 행렬이 고도 ~= 0을 산출한다.
     """
     r_detilt = Rotation.from_euler('xyz', [roll_meas, pitch_meas, 0]).inv()
     r_mount_undo = Rotation.from_euler('xyz', [roll_offset, pitch_offset, 0]).inv()
@@ -194,15 +194,15 @@ def points_to_elevation_grid(
     grid_forward_m: float,
     grid_width_m: float,
 ) -> np.ndarray:
-    """Project valid camera-optical points into a levelled elevation grid.
+    """유효한 카메라-optical 포인트들을 수평화된 고도 그리드에 투영한다.
 
-    Grid convention matches gradient_map.py: col increases in +x (forward),
-    row increases in -y (row 0 = max y = left side). col=0 / row=center is the
-    robot/camera's own position; forward extent is [0, grid_forward_m), lateral
-    extent is [-grid_width_m/2, grid_width_m/2).
+    그리드 규약은 gradient_map.py와 일치: col은 +x(전방) 방향으로 증가,
+    row는 -y 방향으로 증가(row 0 = 최대 y = 왼쪽). col=0 / row=center가
+    로봇/카메라 자신의 위치이며; 전방 범위는 [0, grid_forward_m), 측면
+    범위는 [-grid_width_m/2, grid_width_m/2)이다.
 
-    Multiple points landing in the same cell are aggregated by median (robust
-    to reflective-surface depth noise). Empty cells are NaN.
+    같은 셀에 떨어지는 여러 포인트는 중앙값으로 집계한다 (반사면 뎁스
+    노이즈에 강건함). 빈 셀은 NaN이다.
     """
     h_grid = max(1, round(grid_width_m / resolution_m))
     w_grid = max(1, round(grid_forward_m / resolution_m))
