@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import cv2
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -7,7 +8,33 @@ from sensor_msgs.msg import Image, CameraInfo
 from std_msgs.msg import Float32
 from cv_bridge import CvBridge
 
-from dolbotz.visualizer import SlopeVisualizer
+
+class _DepthRoiWindow:
+    """Owns one OpenCV window showing the depth ROI and the computed slope."""
+
+    def __init__(self, window_name: str):
+        self.window_name = window_name
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+
+    def show(self, depth_m: np.ndarray, left_box, right_box, slope_deg=None, max_depth_m=3.0):
+        """left_box / right_box: (x0, y0, x1, y1) rectangles in image coordinates."""
+        vis = np.clip(depth_m, 0, max_depth_m) / max_depth_m
+        vis = (vis * 255).astype(np.uint8)
+        vis = cv2.applyColorMap(vis, cv2.COLORMAP_JET)
+
+        for (x0, y0, x1, y1), color in ((left_box, (0, 255, 0)), (right_box, (0, 0, 255))):
+            cv2.rectangle(vis, (x0, y0), (x1, y1), color, 2)
+
+        if slope_deg is not None:
+            cv2.putText(vis, f"slope: {slope_deg:+.1f} deg", (10, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+        cv2.imshow(self.window_name, vis)
+        cv2.waitKey(1)
+
+    def close(self):
+        cv2.destroyWindow(self.window_name)
+
 
 class SideSlopeTriggerNode(Node):
     def __init__(self):
@@ -34,7 +61,7 @@ class SideSlopeTriggerNode(Node):
 
         self.bridge = CvBridge()
         self.fx = self.fy = self.cx = self.cy = None
-        self.vis = SlopeVisualizer('slope_decision')
+        self.vis = _DepthRoiWindow('slope_decision')
 
         self.sub_info = self.create_subscription(
             CameraInfo, self.depth_info_topic, self.on_info, qos_profile_sensor_data
@@ -108,7 +135,7 @@ class SideSlopeTriggerNode(Node):
         roll_rad = math.atan2(dh, self.track_w)
         roll_deg = math.degrees(roll_rad)
 
-        self.vis.show_depth_roi(
+        self.vis.show(
             depth,
             (left_x0, y_start, left_x1, y_end),
             (right_x0, y_start, right_x1, y_end),
