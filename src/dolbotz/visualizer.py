@@ -29,6 +29,11 @@ class SlopeVisualizer:
         cv2.imshow(self.window_name, vis)
         cv2.waitKey(1)
 
+    def show_image(self, bgr_img: np.ndarray):
+        """Render an already-annotated BGR image as-is (e.g. detection overlays)."""
+        cv2.imshow(self.window_name, bgr_img)
+        cv2.waitKey(1)
+
     def show_value_panel(self, label: str, value, size=(400, 200)):
         """Render a blank panel with a label/value pair, for nodes with no image to show."""
         w, h = size
