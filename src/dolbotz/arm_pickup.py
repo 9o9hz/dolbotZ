@@ -21,7 +21,7 @@ class ArmPickupNode(Node):
 
     퍼블리시:
       /arm/target_point  (geometry_msgs/PointStamped)  — 카메라 프레임 XYZ
-      /arm/debug_image   (sensor_msgs/Image)            — 바운딩박스 시각화
+      /arm/debug_image   (sensor_msgs/Image)            — 매 프레임 RGB (탐지 성공 시 바운딩박스 오버레이)
 
     파라미터:
       model_path         : YOLO .pt 경로 (필수)
@@ -152,32 +152,31 @@ class ArmPickupNode(Node):
                 Y = (v - self.cy) * z / self.fy
                 best = (conf, X, Y, z, (x1, y1, x2, y2), cls_name, u, v)
 
-        if best is None:
-            return
+        if best is not None:
+            conf, X, Y, Z, bbox, cls_name, u, v = best
 
-        conf, X, Y, Z, bbox, cls_name, u, v = best
+            pt = PointStamped()
+            pt.header = color_msg.header
+            pt.point.x = X
+            pt.point.y = Y
+            pt.point.z = Z
+            self.pub_point.publish(pt)
 
-        pt = PointStamped()
-        pt.header = color_msg.header
-        pt.point.x = X
-        pt.point.y = Y
-        pt.point.z = Z
-        self.pub_point.publish(pt)
+            self.get_logger().info(
+                f'[{cls_name} conf={conf:.2f}]  '
+                f'X={X:.3f} Y={Y:.3f} Z={Z:.3f} m')
 
-        self.get_logger().info(
-            f'[{cls_name} conf={conf:.2f}]  '
-            f'X={X:.3f} Y={Y:.3f} Z={Z:.3f} m')
+            # 디버그 이미지 오버레이
+            bx1, by1, bx2, by2 = (int(c) for c in bbox)
+            cv2.rectangle(color, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
+            cv2.circle(color, (u, v), 6, (0, 0, 255), -1)
+            cv2.putText(
+                color,
+                f'{cls_name} {conf:.2f} | Z={Z:.2f}m',
+                (bx1, by1 - 8),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-        # 디버그 이미지
-        bx1, by1, bx2, by2 = (int(c) for c in bbox)
-        cv2.rectangle(color, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
-        cv2.circle(color, (u, v), 6, (0, 0, 255), -1)
-        cv2.putText(
-            color,
-            f'{cls_name} {conf:.2f} | Z={Z:.2f}m',
-            (bx1, by1 - 8),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
+        # 탐지 성공 여부와 무관하게 매 프레임 RGB를 그대로 퍼블리시
         dbg = self.bridge.cv2_to_imgmsg(color, encoding='bgr8')
         dbg.header = color_msg.header
         self.pub_debug.publish(dbg)
