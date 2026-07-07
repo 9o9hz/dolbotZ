@@ -1,6 +1,10 @@
 """Shared OpenCV window helpers for dolbotz nodes."""
 import cv2
 import numpy as np
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 
 
 class SlopeVisualizer:
@@ -45,3 +49,43 @@ class SlopeVisualizer:
 
     def close(self):
         cv2.destroyWindow(self.window_name)
+
+
+class DebugImageViewerNode(Node):
+    """Subscribes to an already-annotated debug Image topic and shows it in a window."""
+
+    def __init__(self):
+        super().__init__('debug_image_viewer_node')
+
+        self.declare_parameter('image_topic', '/arm/debug_image')
+        self.declare_parameter('window_name', 'arm_debug')
+
+        image_topic = str(self.get_parameter('image_topic').value)
+        window_name = str(self.get_parameter('window_name').value)
+
+        self.bridge = CvBridge()
+        self.vis = SlopeVisualizer(window_name)
+
+        self.create_subscription(Image, image_topic, self._on_image, 10)
+
+        self.get_logger().info(f'DebugImageViewerNode ready  |  subscribing={image_topic}')
+
+    def _on_image(self, msg: Image):
+        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self.vis.show_image(img)
+
+    def destroy_node(self):
+        self.vis.close()
+        super().destroy_node()
+
+
+def main():
+    rclpy.init()
+    node = DebugImageViewerNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

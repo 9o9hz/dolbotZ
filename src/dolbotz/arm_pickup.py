@@ -7,8 +7,6 @@ from geometry_msgs.msg import PointStamped
 from cv_bridge import CvBridge
 import message_filters
 
-from dolbotz.visualizer import SlopeVisualizer
-
 try:
     from ultralytics import YOLO
     _YOLO_OK = True
@@ -64,7 +62,6 @@ class ArmPickupNode(Node):
 
         self.bridge = CvBridge()
         self.fx = self.fy = self.cx = self.cy = None
-        self.vis = SlopeVisualizer('arm_pickup')
 
         self.create_subscription(
             CameraInfo, info_topic, self._on_info, qos_profile_sensor_data)
@@ -184,12 +181,6 @@ class ArmPickupNode(Node):
         dbg = self.bridge.cv2_to_imgmsg(color, encoding='bgr8')
         dbg.header = color_msg.header
         self.pub_debug.publish(dbg)
-
-        self.vis.show_image(color)
-
-    def destroy_node(self):
-        self.vis.close()
-        super().destroy_node()
 
 
 def main():
