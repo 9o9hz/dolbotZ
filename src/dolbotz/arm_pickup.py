@@ -118,8 +118,6 @@ class ArmPickupNode(Node):
 
     def _on_frames(self, color_msg: Image, depth_msg: Image):
         if self.fx is None or self.model is None:
-            self.get_logger().info(
-                f'[debug] 프레임 스킵: fx={self.fx} model={self.model is not None}')
             return
 
         import cv2
@@ -132,16 +130,13 @@ class ArmPickupNode(Node):
 
         best = None  # (conf, X, Y, Z, bbox, cls_name)
         for r in results:
-            if r.boxes is None or len(r.boxes) == 0:
-                self.get_logger().info('[debug] YOLO: 박스 0개')
+            if r.boxes is None:
                 continue
             for box in r.boxes:
                 conf = float(box.conf[0])
-                cls_name = self.model.names.get(int(box.cls[0]), '')
-                self.get_logger().info(
-                    f'[debug] raw box: cls={cls_name} conf={conf:.2f}')
                 if conf < self.conf_th:
                     continue
+                cls_name = self.model.names.get(int(box.cls[0]), '')
                 if cls_name != self.target:
                     continue
                 if best and conf <= best[0]:
@@ -151,8 +146,6 @@ class ArmPickupNode(Node):
                 u, v = int((x1 + x2) / 2), int((y1 + y2) / 2)
                 z = self._sample_depth(depth, u, v)
                 if z <= 0.0:
-                    self.get_logger().info(
-                        f'[debug] {cls_name} 깊이 샘플 실패 (u={u} v={v})')
                     continue
 
                 X = (u - self.cx) * z / self.fx
