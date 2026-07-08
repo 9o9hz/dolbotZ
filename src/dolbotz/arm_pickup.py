@@ -27,6 +27,7 @@ class ArmPickupNode(Node):
       model_path         : YOLO .pt 경로 (필수)
       target_class       : 탐지할 클래스 이름 (기본 'supply_box')
       conf_threshold     : 최소 confidence (기본 0.5)
+      infer_size         : YOLO 추론 해상도 (기본 320, GPU 없는 환경에서 속도용)
       depth_roi_radius   : 깊이 샘플링 반경 픽셀 (기본 5)
       max_depth_m        : 유효 거리 상한 m (기본 2.0)
       color_topic        : 컬러 이미지 토픽
@@ -40,6 +41,7 @@ class ArmPickupNode(Node):
         self.declare_parameter('model_path', '/home/jecs/dolbotZ/supplybest.pt')
         self.declare_parameter('target_class', 'supplybox')
         self.declare_parameter('conf_threshold', 0.5)
+        self.declare_parameter('infer_size', 320)
         self.declare_parameter('depth_roi_radius', 5)
         self.declare_parameter('max_depth_m', 2.0)
         self.declare_parameter(
@@ -52,6 +54,7 @@ class ArmPickupNode(Node):
         model_path   = str(self.get_parameter('model_path').value)
         self.target  = str(self.get_parameter('target_class').value)
         self.conf_th = float(self.get_parameter('conf_threshold').value)
+        self.infer_size = int(self.get_parameter('infer_size').value)
         self.depth_r = int(self.get_parameter('depth_roi_radius').value)
         self.max_d   = float(self.get_parameter('max_depth_m').value)
         color_topic  = str(self.get_parameter('color_topic').value)
@@ -81,7 +84,7 @@ class ArmPickupNode(Node):
 
         self.get_logger().info(
             f'ArmPickupNode ready  |  target={self.target}  '
-            f'conf>={self.conf_th}  max_depth={self.max_d}m')
+            f'conf>={self.conf_th}  max_depth={self.max_d}m  infer_size={self.infer_size}')
 
     # ------------------------------------------------------------------
     def _load_model(self, path: str):
@@ -126,7 +129,7 @@ class ArmPickupNode(Node):
         depth = self._to_meters(
             self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding='passthrough'))
 
-        results = self.model(color, verbose=False)
+        results = self.model(color, imgsz=self.infer_size, verbose=False)
 
         best = None  # (conf, X, Y, Z, bbox, cls_name)
         for r in results:
