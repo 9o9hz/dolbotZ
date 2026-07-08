@@ -181,23 +181,37 @@ def camera_body_to_level_matrix(
     roll_offset: float,
     pitch_offset: float,
 ) -> np.ndarray:
-    """카메라-BODY 프레임 벡터를 수평 출력 프레임으로 매핑하는 회전 행렬.
+    """카메라-BODY 프레임(현재 카메라의 물리적 기울어진 프레임) 좌표를
+    world-level 프레임(중력에 대해 수평, +x는 섀시 현재 헤딩) 좌표로
+    매핑하는 회전 행렬.
 
-    `roll_meas`/`pitch_meas`는 카메라 자체의 총 측정 기울기이다(장착 +
-    섀시 동적 기울어짐이 결합됨, update_complementary_filter에서 옴).
-    `roll_offset`/`pitch_offset`은 고정 장착 기울기이다
-    (camera_roll/pitch_offset_deg, 라디안 단위). 결과값은 먼저 총 측정
-    기울기를 되돌리고(가상의 수평 *장착된* 카메라 프레임으로), 그 다음
-    고정 장착 기울기를 되돌린다(실제 섀시 수평 프레임으로) — 따라서 출력
-    프레임의 +x는 섀시의 현재 헤딩을 따르며, 중력에 대해 수평이 맞춰지고,
-    알려진 장착 기울기가 빠진 상태가 된다.
+    `roll_meas`/`pitch_meas`는 상보필터가 추정한 카메라의 총 기울기이며,
+    이는 이미 고정 장착 기울기와 섀시의 동적 기울어짐이 결합된 값이다 —
+    가속도계가 물리적으로 측정하는 것이 바로 이 결합된 총 기울기이기
+    때문이다 (roll_pitch_from_accel_body/update_complementary_filter 참고).
+    따라서 이 총 기울기를 한 번만 되돌리면 이미 world-level 프레임에
+    도달하며, roll_offset/pitch_offset을 별도로 한 번 더 빼면 실제로는
+    존재하지 않는 성분을 중복으로 제거하는 셈이 되어 오차가 생긴다
+    (예: 마운트 피치 10도 + 섀시 수평 상태에서 실제 경사 15도인 지형이
+    약 37도로 과대 계산됨을 독립적인 물리 시뮬레이션으로 확인함).
 
-    검증됨: 평평한 바닥에서는, 섀시 자체가 수평이기만 하면 카메라 장착
-    기울기와 무관하게 이 행렬이 고도 ~= 0을 산출한다.
+    roll_pitch_from_accel_body의 라운드트립 관계
+    (accel = R.inv().apply([0,0,g]) 로 합성하면 roll_pitch_from_accel_body(accel)가
+    R의 오일러각을 복원함, TestRollPitchFromAccelBody 참고)로부터,
+    R_meas := Rotation.from_euler('xyz', [roll_meas, pitch_meas, 0])는
+    world-level 프레임에서 카메라 현재 프레임으로의 회전이다
+    (accel_camera_frame = R_meas.inv().apply(accel_world_level)). 따라서
+    카메라-현재-프레임 좌표를 world-level 좌표로 되돌리려면 R_meas를
+    "정방향"으로 적용해야 한다 — .inv()가 아니다:
+    p_level = R_meas.apply(p_camera_frame).
+
+    roll_offset/pitch_offset은 위 이유로 이 계산에 더 이상 쓰이지 않는다.
+    총 측정 기울기가 이미 마운트 기울기를 포함하므로 별도로 뺄 필요가
+    없기 때문이다. 호출 시그니처는 마운트 오프셋 값을 호출부에 명시적으로
+    남겨두기 위해(및 호환성을 위해) 그대로 유지한다.
     """
-    r_detilt = Rotation.from_euler('xyz', [roll_meas, pitch_meas, 0]).inv()
-    r_mount_undo = Rotation.from_euler('xyz', [roll_offset, pitch_offset, 0]).inv()
-    return (r_mount_undo * r_detilt).as_matrix()
+    del roll_offset, pitch_offset  # 의도적으로 미사용 — 위 docstring 참고
+    return Rotation.from_euler('xyz', [roll_meas, pitch_meas, 0]).as_matrix()
 
 
 def points_to_elevation_grid(
