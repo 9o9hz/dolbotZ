@@ -38,6 +38,7 @@
 | `camera_matrix` | `np.ndarray (3x3)` 또는 `None` | 핀홀 내부 파라미터. 없으면 CameraInfo 토픽 값 사용 |
 | `dist_coeffs` | `np.ndarray` 또는 `None` | 왜곡 계수. 없으면 CameraInfo 토픽 값 사용 |
 | `accel_reference_body` | `np.ndarray (3,)` 또는 `None` | 평지에서 실측한 기준 가속도(body 프레임) |
+| `complementary_filter_alpha` | `float` (선택) | 상보필터 alpha 오버라이드. 키 자체가 없어도 됨 |
 
 `camera_matrix`/`dist_coeffs`/`accel_reference_body`가 `None`인 필드는 해당
 값을 이 피클로 오버라이드하지 않고 기존 소스(CameraInfo 토픽, ROS 파라미터
@@ -45,7 +46,16 @@
 
 ## 호출부(ROS 노드)의 폴백 규칙
 
-`load_calibration(serial_no)`가 `None`을 반환하면(피클이 없으면) 호출부는
-기존 ROS 파라미터 기본값을 그대로 써야 한다. 지금은 피클이 하나도 없으므로
-모든 노드가 항상 이 폴백 경로를 탄다 — 나중에 캘리브레이션 스크립트가 피클을
-만들면 코드 변경 없이 자동으로 반영된다.
+`elevation_map_node`/`flat_drive_node`는 시작 시 `camera_serial_no` 파라미터
+(기본값 빈 문자열)로 `dolbotz.utils.attitude.resolve_mount_defaults(serial_no)`를
+호출해 `camera_height_m`/`camera_pitch_offset_deg`/`camera_roll_offset_deg`/
+`complementary_filter_alpha`의 `declare_parameter` 기본값을 정한다. 우선순위는:
+
+1. `--ros-args -p camera_height_m:=X` 등으로 명시적으로 넘긴 값 (항상 최우선)
+2. 이 디렉토리의 캘리브레이션 피클에 해당 키가 있으면 그 값
+3. 둘 다 없으면 `dolbotz/utils/attitude.py`의 `MOUNT_*_PLACEHOLDER` /
+   `COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER` 상수
+
+지금은 피클이 하나도 없으므로 모든 노드가 항상 3번(코드 상수)을 쓴다 —
+나중에 캘리브레이션 스크립트가 피클을 만들면 코드 변경 없이 자동으로
+2번이 반영된다.

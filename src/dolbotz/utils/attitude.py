@@ -17,9 +17,21 @@ IMU('/camera/camera/imu', frame_id 'camera_*_optical_frame')를 구독해서 자
     이 원칙을 지켜야 한다.
   * yaw는 추정하지 않는다 (마그네토미터도 자이로 Z축 적분도 없음) — roll/pitch만
     두 개의 독립 스칼라로 추적한다.
+
+마운트 파라미터 상수(MOUNT_*_PLACEHOLDER, COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER):
+  카메라 높이/장착 각도/상보필터 alpha는 대회장에서 실측 후 자주 바뀔 수 있는
+  값이라, config/*.yaml 파일 경로를 거치지 않고 의도적으로 코드에 상수로
+  둔다 (config/ 파일을 고쳐서 재빌드/재배포하는 것보다 이 파일 한 곳의 숫자를
+  바로 고치는 편이 대회 중 실측-반영 사이클에 더 알맞다). elevation_map.py와
+  flat_drive.py가 예전에는 각각 리터럴 숫자(0.5/10.0/0.0/0.97)로 중복
+  선언하고 있어서, 값 하나를 바꿀 때 두 파일을 다 고쳐야 하고 하나만 놓치면
+  두 노드가 서로 다른 값으로 계산하는 위험이 있었다 — 이제 두 파일 모두 이
+  상수를 import해서 declare_parameter 기본값으로 쓴다.
 """
 
 import numpy as np
+
+from dolbotz.utils.paths import load_calibration
 
 # ---------------------------------------------------------------------------
 # 고정 축 규약 상수
@@ -37,6 +49,15 @@ R_OPTICAL_TO_BODY = R_BODY_TO_OPTICAL.T  # rotation matrix is orthogonal
 
 # 실측 전 임시값 — 실제 하드웨어에서 상보필터 튜닝 후 조정할 것.
 COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER = 0.97
+
+# 실측 전 임시값 — 지면 위 카메라 높이 [m]. 대회장에서 실측 후 갱신할 것.
+MOUNT_CAMERA_HEIGHT_M_PLACEHOLDER = 0.5
+
+# 실측 전 임시값 — 고정 카메라 장착 피치 [deg] (기수 하향이 양수). 실측 후 갱신할 것.
+MOUNT_PITCH_OFFSET_DEG_PLACEHOLDER = 10.0
+
+# 실측 전 임시값 — 고정 카메라 장착 롤 [deg]. 실측 후 갱신할 것.
+MOUNT_ROLL_OFFSET_DEG_PLACEHOLDER = 0.0
 
 
 def roll_pitch_from_accel_body(accel_body: np.ndarray) -> tuple[float, float]:
@@ -91,3 +112,30 @@ def optical_vector_to_body(v) -> np.ndarray:
     객체나 받는다.
     """
     return R_OPTICAL_TO_BODY @ np.array([v.x, v.y, v.z], dtype=np.float64)
+
+
+def resolve_mount_defaults(serial_no: str) -> dict:
+    """마운트 파라미터의 declare_parameter 기본값으로 쓸 dict를 만든다.
+
+    우선순위: dolbotz.utils.paths.load_calibration(serial_no)가 값을 반환하면
+    (해당 키가 피클에 있는 경우) 그 값을 쓰고, 없으면(피클 자체가 없거나
+    특정 키가 빠져 있으면) 이 모듈의 MOUNT_*_PLACEHOLDER /
+    COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER 상수로 폴백한다. 지금은 캘리브레이션
+    피클이 하나도 없으므로(config/calibration/README.md 참고) 항상 상수가
+    반환된다.
+
+    이 함수가 반환한 값은 declare_parameter의 기본값일 뿐이므로, 사용자가
+    실행 시 --ros-args -p camera_height_m:=X 등으로 명시적으로 넘기면 ROS
+    파라미터 시스템이 그 값을 항상 최우선으로 쓴다 — 이 함수는 그 경우를
+    신경 쓸 필요가 없다.
+    """
+    calibration = load_calibration(serial_no) or {}
+    return {
+        'camera_height_m': calibration.get('camera_height_m', MOUNT_CAMERA_HEIGHT_M_PLACEHOLDER),
+        'camera_pitch_offset_deg': calibration.get(
+            'camera_pitch_offset_deg', MOUNT_PITCH_OFFSET_DEG_PLACEHOLDER),
+        'camera_roll_offset_deg': calibration.get(
+            'camera_roll_offset_deg', MOUNT_ROLL_OFFSET_DEG_PLACEHOLDER),
+        'complementary_filter_alpha': calibration.get(
+            'complementary_filter_alpha', COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER),
+    }

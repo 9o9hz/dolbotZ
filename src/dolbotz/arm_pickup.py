@@ -7,6 +7,8 @@ from geometry_msgs.msg import PointStamped
 from cv_bridge import CvBridge
 import message_filters
 
+from dolbotz.utils.paths import get_models_dir
+
 try:
     from ultralytics import YOLO
     _YOLO_OK = True
@@ -38,7 +40,7 @@ class ArmPickupNode(Node):
     def __init__(self):
         super().__init__('arm_pickup_node')
 
-        self.declare_parameter('model_path', '/home/jecs/dolbotZ/supplybest.pt')
+        self.declare_parameter('model_path', str(get_models_dir() / 'supplybest.pt'))
         self.declare_parameter('target_class', 'supplybox')
         self.declare_parameter('conf_threshold', 0.5)
         self.declare_parameter('infer_size', 320)

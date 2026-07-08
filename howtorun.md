@@ -52,10 +52,6 @@ ros2 run realsense2_camera realsense2_camera_node --ros-args \
 
 ```bash
 ros2 run dolbotz flat_drive --ros-args \
-  -p model_path:=/home/jecs/dolbotZ/runs/segment/dolbotz_seg_v1/weights/best_openvino_model \
-  -p camera_height_m:=0.5 \
-  -p camera_pitch_offset_deg:=10.0 \
-  -p camera_roll_offset_deg:=0.0 \
   -p bev_meters_per_pixel:=0.03 \
   -p bev_img_width:=200 \
   -p bev_img_height:=200 \
@@ -63,18 +59,36 @@ ros2 run dolbotz flat_drive --ros-args \
   -p min_row_pixels:=5
 ```
 
+`model_path`와 카메라 마운트 파라미터(`camera_height_m` 등)는 기본값이 있으므로
+위 예시에는 생략했다 — 아래 참고.
+
 구독: `/camera/camera/color/image_raw`, `.../camera_info`, `/camera/camera/imu`
 발행: `/flatdrive/planned_path`(`nav_msgs/Path`, x=전방/y=좌측 m — 실제 출력),
 `/planning/target_point`, `/bev/image`, `/bev/mask`, `/bev/debug_overlay`,
 `/bev/centerline_overlay`, `/bev/H` (디버그용 중간 결과)
 
-> **주의**: `model_path`는 상대경로면 프로세스 작업 디렉터리 기준이므로, 워크스페이스
-> 루트가 아닌 곳에서 실행할 경우 절대경로로 지정하세요. `camera_height_m`,
-> `camera_pitch_offset_deg`, `camera_roll_offset_deg`, `bev_meters_per_pixel`,
-> `bev_img_width/height`, `min_row_pixels`, `complementary_filter_alpha`는 실측
-> 전 임시값입니다 (`src/dolbotz/flat_drive.py`의 PLACEHOLDER 주석 참고). 카메라
-> 마운트 파라미터는 `elevation_map`과 이름이 같으므로(동일 카메라) launch에서
-> 값을 공유하세요.
+> **주의 — model_path**: 기본값은 `dolbotz.utils.paths.get_models_dir()` 기준
+> `config/models/dolbotz_seg_v1/best_openvino_model`로 실행 위치(cwd)나
+> 사용자 홈 경로와 무관하게 항상 절대경로로 계산된다 (과거 `arm_pickup.py`가
+> `/home/j/dolbotZ/...`로 하드코딩되어 있다가 사용자가 바뀌며 깨졌던 문제,
+> 커밋 `6056cf8`, 를 근본적으로 해결한 방식). 다른 모델을 쓰려면
+> `config/model_paths.yaml`을 복사해 값을 채운 뒤 `--params-file`로 넘기거나
+> `-p model_path:=/abs/path`로 직접 오버라이드하세요.
+>
+> **주의 — 카메라 마운트 파라미터**: `camera_height_m`, `camera_pitch_offset_deg`,
+> `camera_roll_offset_deg`, `complementary_filter_alpha`의 기본값은
+> `src/dolbotz/utils/attitude.py`의 `MOUNT_*_PLACEHOLDER` /
+> `COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER` 상수다 (실측 전 임시값 — 대회장에서
+> 자주 바뀔 수 있어 의도적으로 config/*.yaml이 아니라 코드 상수로 둔다).
+> `elevation_map`과 파라미터 이름이 같다(동일 카메라). 값을 바꾸는 세 가지 방법:
+>   (a) 한 번만 다르게 실행 — `--ros-args -p camera_height_m:=X`로 즉석 오버라이드
+>   (b) 이후 계속 이 값을 쓰기 — `attitude.py`의 상수 자체를 수정
+>   (c) 카메라별로 실측값을 자동 적용 — `config/calibration/`에 해당 카메라
+>       `camera_serial_no`의 캘리브레이션 피클을 넣어두고 `-p
+>       camera_serial_no:=339222071362`처럼 지정하면, 그 피클에 있는 값이
+>       `attitude.py` 상수보다 우선 적용된다 (피클 스키마는
+>       `config/calibration/README.md` 참고 — 아직 피클을 만드는 스크립트는
+>       없고 스키마만 정해져 있다).
 
 ### slope_decision (뎁스 카메라로 좌우 기울기(roll) 추정)
 
@@ -94,9 +108,6 @@ ros2 run dolbotz elevation_map --ros-args \
   -p depth_topic:=/camera/camera/depth/image_rect_raw \
   -p camera_info_topic:=/camera/camera/depth/camera_info \
   -p imu_topic:=/camera/camera/imu \
-  -p camera_height_m:=0.5 \
-  -p camera_pitch_offset_deg:=10.0 \
-  -p camera_roll_offset_deg:=0.0 \
   -p resolution_m:=0.15 \
   -p min_depth_m:=0.5 \
   -p max_depth_m:=4.0 \
@@ -106,10 +117,14 @@ ros2 run dolbotz elevation_map --ros-args \
 구독: `/camera/camera/depth/image_rect_raw`, `/camera/camera/depth/camera_info`, `/camera/camera/imu`
 발행: `/terrain/elevation_map` (32FC1, m 단위; NaN=미관측)
 
-> **주의**: `camera_height_m`, `camera_pitch_offset_deg`, `camera_roll_offset_deg`,
-> `min_depth_m`, `blind_fill_forward_m`, `complementary_filter_alpha`는 실측 전
-> 임시값입니다 (`src/dolbotz/elevation_map.py`의 PLACEHOLDER 주석 참고). 실제
-> 하드웨어(장착 각도, D435i 최소 인식거리 등)에 맞춰 조정이 필요합니다.
+> **주의 — min_depth_m/blind_fill_forward_m**: 실측 전 임시값입니다
+> (`src/dolbotz/elevation_map.py`의 PLACEHOLDER 주석 참고). 실제 하드웨어
+> (D435I 최소 인식거리 등)에 맞춰 조정이 필요합니다.
+>
+> **주의 — 카메라 마운트 파라미터**: `camera_height_m`, `camera_pitch_offset_deg`,
+> `camera_roll_offset_deg`, `complementary_filter_alpha`의 기본값/오버라이드
+> 방법은 `flat_drive` 섹션의 안내와 동일합니다 (같은 상수, 같은 카메라 —
+> `src/dolbotz/utils/attitude.py` 참고).
 
 ### gradient_map (고도맵 → 경사 필드 → 슬로프 제한 경로 계획)
 
@@ -131,11 +146,13 @@ ros2 run dolbotz gradient_map --ros-args \
 
 ```bash
 ros2 run dolbotz arm_pickup --ros-args \
-  -p model_path:=/path/to/best.pt \
   -p target_class:=supply_box
 ```
 
-`model_path`는 필수 파라미터. `ultralytics`가 설치되어 있지 않으면 탐지 기능이 비활성화됩니다.
+`model_path` 기본값은 `dolbotz.utils.paths.get_models_dir()` 기준
+`config/models/supplybest.pt`다 (flat_drive와 동일한 방식으로 cwd/사용자 홈
+경로 무관하게 해석됨). 다른 가중치를 쓰려면 `-p model_path:=/abs/path`로
+오버라이드하세요. `ultralytics`가 설치되어 있지 않으면 탐지 기능이 비활성화됩니다.
 
 ## 4. 테스트 실행
 
@@ -155,9 +172,30 @@ python3 -m pytest test/ -v
 - `test_flat_drive.py` — 지면 호모그래피 재유도(`ground_to_image_homography` 등,
   마운트/섀시 기울기 조합에 대한 독립 물리 검증 포함), 세그멘테이션 마스크 →
   BEV → centerline 경로 추출
+- `test_paths.py` — `dolbotz.utils.paths`의 리포/패키지 경로 해석(`get_repo_root`,
+  `get_package_share_dir`의 ament_index/폴백 하이브리드, `get_models_dir`,
+  `load_calibration`)
+- `test_attitude.py` — `dolbotz.utils.attitude`의 마운트 파라미터 상수,
+  `resolve_mount_defaults`의 캘리브레이션 피클 오버라이드 우선순위, 그리고
+  `ElevationMapNode`/`FlatDriveNode`의 `declare_parameter` 기본값이 실제로 이
+  상수를 참조하는지에 대한 회귀 테스트(두 노드를 실제로 생성함)
 
-순수 함수에 대한 단위/벤치마크 테스트만 포함되어 있고, ROS 노드
-(`GradientMapNode`/`ElevationMapNode`/`UnifiedDriveNode`) 자체는 테스트 대상이
-아닙니다. `dolbotz.utils.attitude`(`roll_pitch_from_accel_body`,
-`update_complementary_filter`, `R_BODY_TO_OPTICAL`)는 `elevation_map.py`와
-`flat_drive.py`가 공유하는 IMU 자세 추정 공용 모듈입니다.
+순수 함수 위주의 단위/벤치마크 테스트이며, `test_attitude.py`의 노드 생성
+테스트를 제외하면 ROS 노드(`GradientMapNode`/`ElevationMapNode`/`FlatDriveNode`)
+자체는 테스트 대상이 아닙니다. `dolbotz.utils.attitude`(`roll_pitch_from_accel_body`,
+`update_complementary_filter`, `R_BODY_TO_OPTICAL`, `resolve_mount_defaults`,
+`MOUNT_*_PLACEHOLDER` 등)는 `elevation_map.py`와 `flat_drive.py`가 공유하는
+IMU 자세 추정 + 마운트 파라미터 공용 모듈입니다.
+
+## 5. config/ 디렉토리
+
+리포 루트의 `config/`에는 모델 파일과 카메라 캘리브레이션 자리만 둔다 (마운트
+파라미터는 위에서 설명한 대로 `attitude.py` 코드 상수로 관리하며, 이번
+정리로 `config/camera_extrinsics.yaml`은 제거했다):
+
+- `config/models/` — 학습된 모델 가중치 (`supplybest.pt`, `dolbotz_seg_v1/`).
+  `dolbotz.utils.paths.get_models_dir()`로 코드가 실행 환경과 무관하게 찾는다.
+  자세한 이동 내역은 `config/models/README.md` 참고.
+- `config/model_paths.yaml` — 문서화 + override 템플릿 (실제 로딩에는 쓰이지 않음).
+- `config/calibration/` — 카메라별 실측 캘리브레이션 피클이 들어갈 자리
+  (아직 생성 스크립트 없음). 스키마/네이밍은 `config/calibration/README.md` 참고.

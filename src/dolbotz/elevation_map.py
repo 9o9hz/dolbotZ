@@ -37,17 +37,22 @@ row 0 = 최대 y = 로봇 왼쪽).
 게시 토픽:
   /terrain/elevation_map   sensor_msgs/Image  32FC1  (미터 단위; NaN = 관측되지 않은 셀)
 
-파라미터 (장착 오프셋은 임시값 — 아래 PLACEHOLDER 주석 참고):
-  camera_height_m          float  기본값 0.5    — 지면 위 카메라 높이 [m], 미실측
-  camera_pitch_offset_deg  float  기본값 10.0   — 고정 카메라 장착 피치 (기수 하향이 양수), 미실측
-  camera_roll_offset_deg   float  기본값 0.0    — 고정 카메라 장착 롤, 미실측
+파라미터 (마운트 오프셋/상보필터 alpha 기본값은 dolbotz.utils.attitude의
+MOUNT_*_PLACEHOLDER / COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER 상수 참고 —
+실측 전 임시값이며 대회장에서 자주 바뀔 수 있어 의도적으로 config/*.yaml이
+아니라 코드에 상수로 둔다. camera_serial_no로 config/calibration/의
+캘리브레이션 피클을 지정하면 그 값이 이 상수보다 우선 적용된다):
+  camera_serial_no         str    기본값 ''     — config/calibration/{model}_{serial}.pkl 조회용
+  camera_height_m          float  attitude.MOUNT_CAMERA_HEIGHT_M_PLACEHOLDER
+  camera_pitch_offset_deg  float  attitude.MOUNT_PITCH_OFFSET_DEG_PLACEHOLDER
+  camera_roll_offset_deg   float  attitude.MOUNT_ROLL_OFFSET_DEG_PLACEHOLDER
   resolution_m             float  기본값 0.15   — 그리드 셀 크기 [m], gradient_map.py 기본값과 일치
   grid_forward_m           float  기본값 4.0    — 전방 맵 범위 [m]
   grid_width_m             float  기본값 4.0    — 측면 맵 범위 [m] (±grid_width_m/2)
   min_depth_m               float  기본값 0.5    — D435i 최소 인식거리 고려해 상향, PLACEHOLDER
   max_depth_m               float  기본값 4.0
   blind_fill_forward_m      float  기본값 0.6    — 사각지대 0.0 채움 범위 [m], PLACEHOLDER
-  complementary_filter_alpha float 기본값 0.97  — PLACEHOLDER, 실제 주행 튜닝 필요
+  complementary_filter_alpha float attitude.COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER
   bench_log_hz              float  기본값 1.0
 """
 
@@ -63,10 +68,10 @@ from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import CameraInfo, Image, Imu
 
 from dolbotz.utils.attitude import (
-    COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER,
     R_BODY_TO_OPTICAL,
     R_OPTICAL_TO_BODY,
     optical_vector_to_body,
+    resolve_mount_defaults,
     roll_pitch_from_accel_body,
     update_complementary_filter,
 )
@@ -261,19 +266,27 @@ class ElevationMapNode(Node):
         self.declare_parameter('depth_topic', '/camera/camera/depth/image_rect_raw')
         self.declare_parameter('camera_info_topic', '/camera/camera/depth/camera_info')
         self.declare_parameter('imu_topic', '/camera/camera/imu')
+
+        # 캘리브레이션 피클(config/calibration/)이 있으면 그 값을, 없으면
+        # dolbotz.utils.attitude의 MOUNT_*_PLACEHOLDER 상수를 마운트 파라미터
+        # 기본값으로 쓴다 (resolve_mount_defaults 참고). --ros-args로 명시적으로
+        # 넘긴 값은 이 기본값과 무관하게 항상 최우선 적용된다.
+        self.declare_parameter('camera_serial_no', '')
+        serial_no = str(self.get_parameter('camera_serial_no').value)
+        mount_defaults = resolve_mount_defaults(serial_no)
+
         # TODO: 아래 5개는 실측 전 임시값. 모듈 docstring의 파라미터 섹션 및
-        # PLACEHOLDER 상수(COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER,
-        # BLIND_FILL_FORWARD_M_PLACEHOLDER) 참고.
-        self.declare_parameter('camera_height_m', 0.5)
-        self.declare_parameter('camera_pitch_offset_deg', 10.0)
-        self.declare_parameter('camera_roll_offset_deg', 0.0)
+        # PLACEHOLDER 상수(BLIND_FILL_FORWARD_M_PLACEHOLDER) 참고.
+        self.declare_parameter('camera_height_m', mount_defaults['camera_height_m'])
+        self.declare_parameter('camera_pitch_offset_deg', mount_defaults['camera_pitch_offset_deg'])
+        self.declare_parameter('camera_roll_offset_deg', mount_defaults['camera_roll_offset_deg'])
         self.declare_parameter('resolution_m', 0.15)
         self.declare_parameter('grid_forward_m', 4.0)
         self.declare_parameter('grid_width_m', 4.0)
         self.declare_parameter('min_depth_m', 0.5)
         self.declare_parameter('max_depth_m', 4.0)
         self.declare_parameter('blind_fill_forward_m', BLIND_FILL_FORWARD_M_PLACEHOLDER)
-        self.declare_parameter('complementary_filter_alpha', COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER)
+        self.declare_parameter('complementary_filter_alpha', mount_defaults['complementary_filter_alpha'])
         self.declare_parameter('bench_log_hz', 1.0)
 
         depth_topic = self.get_parameter('depth_topic').value
