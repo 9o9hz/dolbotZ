@@ -13,3 +13,8 @@ log/
 
 # VSCode
 .vscode/
+
+# ultralytics 학습 산출물 — 검증된 가중치만 의도적으로 config/models/로
+# 수동 복사한다 (config/models/README.md 참고). 재현 가능한 산출물이라
+# git으로 추적하지 않는다.
+runs/
