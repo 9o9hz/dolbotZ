@@ -1,0 +1,42 @@
+# model_paths.yaml
+#
+# 문서화 + override 템플릿 파일. flat_drive_node/arm_pickup_node는 시작 시
+# 이 파일을 자동으로 읽지 않는다 — 코드 기본값은 dolbotz.utils.paths의
+# get_models_dir()를 이용해 실행 환경(colcon install 또는 PYTHONPATH=src로
+# 소스에서 직접 실행)에 관계없이 항상 절대경로로 새로 계산된다:
+#
+#   flat_drive_node.model_path  = get_models_dir() / 'dolbotz_seg_v1' / 'best_openvino_model'
+#   arm_pickup_node.model_path  = get_models_dir() / 'supplybest.pt'
+#
+# get_models_dir()는 get_config_dir() / 'models' 이고, get_config_dir()는
+# 이 파일이 있는 디렉토리(config/)를 가리킨다 — 즉 위 경로는 아래와 같다:
+#
+#   flat_drive_node.model_path  -> config/models/dolbotz_seg_v1/best_openvino_model
+#   arm_pickup_node.model_path  -> config/models/supplybest.pt
+#
+# 실제 배포 환경에서 이 경로가 무엇으로 해석되는지 직접 확인하려면:
+#   python3 -c "from dolbotz.utils.paths import get_models_dir; print(get_models_dir())"
+#
+# ---------------------------------------------------------------------------
+# override 템플릿
+# ---------------------------------------------------------------------------
+# 다른 모델(예: 실험용으로 새로 학습한 가중치)을 임시로 쓰고 싶다면, 아래
+# 주석을 해제하고 절대경로로 채운 뒤 --params-file로 넘기면 코드 기본값을
+# 오버라이드할 수 있다:
+#
+#   ros2 run dolbotz flat_drive --ros-args --params-file config/model_paths.yaml
+#
+# 주의: model_path 값은 반드시 절대경로로 채울 것. 상대경로를 쓰면 실행
+# 디렉토리(cwd)에 따라 다시 못 찾는 문제가 재발한다 — 이 파일이 애초에
+# 그 문제(과거 arm_pickup.py의 하드코딩된 절대경로가 사용자/머신이 바뀌며
+# 깨졌던 사례, 커밋 6056cf8)를 해결하려고 만들어졌다는 점을 기억할 것.
+# 아래는 키 자체가 주석 처리된 빈 템플릿이므로, 그대로 넘기면 아무 파라미터도
+# 오버라이드하지 않는다.
+
+# flat_drive_node:
+#   ros__parameters:
+#     model_path: "/absolute/path/to/your/experimental_openvino_model"
+
+# arm_pickup_node:
+#   ros__parameters:
+#     model_path: "/absolute/path/to/your/experimental_model.pt"
