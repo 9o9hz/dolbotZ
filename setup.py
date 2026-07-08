@@ -28,7 +28,7 @@ setup(
     entry_points={
         "console_scripts": [
             "slope_decision = dolbotz.slope_decision:main",
-            "slope_drive = dolbotz.slope_drive:main",
+            "flat_drive = dolbotz.flat_drive:main",
             "arm_pickup = dolbotz.arm_pickup:main",
             "gradient_map = dolbotz.gradient_map:main",
             "elevation_map = dolbotz.elevation_map:main",

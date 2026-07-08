@@ -11,9 +11,11 @@ source /opt/ros/humble/setup.bash
 
 필요 의존성 (`package.xml` 기준):
 - rclpy, sensor_msgs, std_msgs, nav_msgs, geometry_msgs, visualization_msgs, cv_bridge, image_transport
-- python3-numpy, python3-opencv (`cv2.ximgproc` 포함), python3-scipy
+- python3-numpy, python3-opencv, python3-scipy
 - RealSense 카메라 사용 시 `realsense2_camera` 패키지 (`ros2 pkg list | grep realsense`로 설치 확인)
 - `arm_pickup` 노드는 추가로 `ultralytics`(YOLO), `message_filters` 필요 — 없으면 해당 노드만 비활성 처리됨
+- `flat_drive` 노드는 추가로 `ultralytics`, `openvino`(OpenVINO IR 세그멘테이션 모델 추론용) 필요
+  — `pip install ultralytics openvino` — 없으면 해당 노드만 비활성 처리됨
 
 ## 1. 빌드
 
@@ -30,7 +32,7 @@ source install/setup.bash
 각 노드가 구독하는 토픽에 맞게 필요한 스트림만 켜서 실행합니다.
 
 ```bash
-# 컬러만 필요할 때 (slope_drive)
+# 컬러만 필요할 때 (flat_drive)
 ros2 run realsense2_camera realsense2_camera_node --ros-args \
   -p enable_color:=true -p enable_depth:=false \
   -p rgb_camera.profile:=640x480x30
@@ -42,17 +44,37 @@ ros2 run realsense2_camera realsense2_camera_node --ros-args \
 
 ## 3. 노드 실행
 
-### slope_drive (카메라 기반 차선 추종 주행 — BEV → 마스크 → 스켈레톤 → 가지치기 → lookahead 조향)
+### flat_drive (평지 주행가능영역 추종 — 세그멘테이션 → BEV투영 → centerline 경로 발행)
+
+`gradient_map`(경사 구간)과 역할이 대칭이다: 이 노드도 실제 속도/조향 명령이
+아니라 좌표(경로)만 발행하고 끝난다. 평지/경사 전환 판단은 별도 decision
+노드(Phase F)가 담당한다.
 
 ```bash
-ros2 run dolbotz slope_drive --ros-args \
+ros2 run dolbotz flat_drive --ros-args \
+  -p model_path:=/home/jecs/dolbotZ/runs/segment/dolbotz_seg_v1/weights/best_openvino_model \
   -p camera_height_m:=0.5 \
-  -p lookahead_distance_pixels:=50 \
-  -p max_speed:=0.2
+  -p camera_pitch_offset_deg:=10.0 \
+  -p camera_roll_offset_deg:=0.0 \
+  -p bev_meters_per_pixel:=0.03 \
+  -p bev_img_width:=200 \
+  -p bev_img_height:=200 \
+  -p conf_threshold:=0.5 \
+  -p min_row_pixels:=5
 ```
 
 구독: `/camera/camera/color/image_raw`, `.../camera_info`, `/camera/camera/imu`
-발행: `/cmd_vel`, `/planning/target_point`, `/bev/image`, `/skeleton_image`, `/pruned_skeleton` 등 (디버그용 중간 결과 포함)
+발행: `/flatdrive/planned_path`(`nav_msgs/Path`, x=전방/y=좌측 m — 실제 출력),
+`/planning/target_point`, `/bev/image`, `/bev/mask`, `/bev/debug_overlay`,
+`/bev/centerline_overlay`, `/bev/H` (디버그용 중간 결과)
+
+> **주의**: `model_path`는 상대경로면 프로세스 작업 디렉터리 기준이므로, 워크스페이스
+> 루트가 아닌 곳에서 실행할 경우 절대경로로 지정하세요. `camera_height_m`,
+> `camera_pitch_offset_deg`, `camera_roll_offset_deg`, `bev_meters_per_pixel`,
+> `bev_img_width/height`, `min_row_pixels`, `complementary_filter_alpha`는 실측
+> 전 임시값입니다 (`src/dolbotz/flat_drive.py`의 PLACEHOLDER 주석 참고). 카메라
+> 마운트 파라미터는 `elevation_map`과 이름이 같으므로(동일 카메라) launch에서
+> 값을 공유하세요.
 
 ### slope_decision (뎁스 카메라로 좌우 기울기(roll) 추정)
 
@@ -117,14 +139,25 @@ ros2 run dolbotz arm_pickup --ros-args \
 
 ## 4. 테스트 실행
 
-`gradient_map.py`가 최상단에서 `rclpy`/`nav_msgs`/`geometry_msgs`를 import하므로,
-ROS 환경을 source한 뒤 실행해야 합니다.
+`gradient_map.py`/`elevation_map.py`/`flat_drive.py`가 최상단에서
+`rclpy`/`nav_msgs`/`geometry_msgs`/`cv_bridge` 등을 import하므로, ROS 환경을
+source한 뒤 실행해야 합니다.
 
 ```bash
 source /opt/ros/humble/setup.bash
 cd /home/j/dolbotZ
-python3 -m pytest test/test_gradient_field.py -v
+python3 -m pytest test/ -v
 ```
 
-`compute_gradient_field`, `plan_path_on_slope_field` 순수 함수에 대한 단위/벤치마크 테스트만
-포함되어 있고, ROS 노드(`GradientMapNode`) 자체는 테스트 대상이 아닙니다.
+- `test_gradient_field.py` — `compute_gradient_field`, `plan_path_on_slope_field`
+- `test_elevation_map.py` — depth 역투영, IMU 상보필터, `camera_body_to_level_matrix`,
+  고도 그리드 투영 (blind-fill 포함)
+- `test_flat_drive.py` — 지면 호모그래피 재유도(`ground_to_image_homography` 등,
+  마운트/섀시 기울기 조합에 대한 독립 물리 검증 포함), 세그멘테이션 마스크 →
+  BEV → centerline 경로 추출
+
+순수 함수에 대한 단위/벤치마크 테스트만 포함되어 있고, ROS 노드
+(`GradientMapNode`/`ElevationMapNode`/`UnifiedDriveNode`) 자체는 테스트 대상이
+아닙니다. `dolbotz.utils.attitude`(`roll_pitch_from_accel_body`,
+`update_complementary_filter`, `R_BODY_TO_OPTICAL`)는 `elevation_map.py`와
+`flat_drive.py`가 공유하는 IMU 자세 추정 공용 모듈입니다.

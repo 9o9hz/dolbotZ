@@ -1,7 +1,7 @@
 """
-Unit tests for the ROS-free pure functions in dolbotz/slope_drive.py.
+Unit tests for the ROS-free pure functions in dolbotz/flat_drive.py.
 
-Run (requires ROS env sourced, since slope_drive.py imports rclpy at module level
+Run (requires ROS env sourced, since flat_drive.py imports rclpy at module level
 — same requirement as test/test_gradient_field.py, see howtorun.md):
     source /opt/ros/humble/setup.bash
     python3 -m pytest test/test_flat_drive.py -v
@@ -14,15 +14,18 @@ that kind of circularity is exactly what let the mount-offset-double-removal
 bug in elevation_map.py's camera_body_to_level_matrix() slip through undetected.
 """
 
+import cv2
 import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-from dolbotz.slope_drive import (
+from dolbotz.flat_drive import (
     bev_ground_projection_matrix,
+    bev_mask_to_centerline_path,
     bev_pixel_to_meters,
     ground_to_image_homography,
     image_to_bev_homography,
+    mask_to_bev,
 )
 from dolbotz.utils.attitude import R_BODY_TO_OPTICAL, roll_pitch_from_accel_body
 
@@ -40,7 +43,7 @@ CAMERA_MATRIX = np.array([
 def _r_total(mount_roll_deg, mount_pitch_deg, chassis_roll_deg, chassis_pitch_deg) -> Rotation:
     """The one true physical rotation (world-level -> camera's current frame):
     fixed mount tilt composed with the chassis's current dynamic lean. Built
-    completely independently of anything in slope_drive.py or elevation_map.py."""
+    completely independently of anything in flat_drive.py or elevation_map.py."""
     mount = Rotation.from_euler(
         'xyz', [np.radians(mount_roll_deg), np.radians(mount_pitch_deg), 0])
     chassis = Rotation.from_euler(
@@ -157,3 +160,148 @@ class TestImageToBevHomographyEndToEnd:
 
         assert col_actual == pytest.approx(col_expected, abs=1e-4)
         assert row_actual == pytest.approx(row_expected, abs=1e-4)
+
+
+class TestMaskToBev:
+    def test_identity_homography_is_a_passthrough(self):
+        mask = np.zeros((50, 50), dtype=np.uint8)
+        mask[10:20, 15:25] = 255
+        bev = mask_to_bev(mask, np.eye(3), bev_width_px=50, bev_height_px=50)
+        np.testing.assert_array_equal(bev, mask)
+
+    def test_uses_nearest_neighbor_no_gray_values(self):
+        """A binary mask must warp to another binary mask (0/255 only) — no
+        antialiased/gray edge pixels from linear interpolation."""
+        mask = np.zeros((60, 60), dtype=np.uint8)
+        mask[20:40, 20:40] = 255
+        # A homography that isn't axis-aligned forces resampling at non-integer
+        # source coordinates, which is where interpolation artifacts would show.
+        rot = np.array([
+            [np.cos(0.3), -np.sin(0.3), 5.0],
+            [np.sin(0.3), np.cos(0.3), 3.0],
+            [0.0, 0.0, 1.0],
+        ])
+        bev = mask_to_bev(mask, rot, bev_width_px=60, bev_height_px=60)
+        assert set(np.unique(bev).tolist()) <= {0, 255}
+
+
+class TestBevMaskToCenterlinePath:
+    BEV_W, BEV_H, MPP = 100, 100, 0.05
+
+    def _corridor_mask(self, col_center_fn, half_width_px=10):
+        """Build a synthetic BEV mask of a corridor whose column center varies
+        per row according to col_center_fn(row)."""
+        mask = np.zeros((self.BEV_H, self.BEV_W), dtype=np.uint8)
+        for row in range(self.BEV_H):
+            c = col_center_fn(row)
+            lo, hi = int(round(c - half_width_px)), int(round(c + half_width_px))
+            mask[row, max(0, lo):min(self.BEV_W, hi + 1)] = 255
+        return mask
+
+    def test_straight_centered_corridor_reads_zero_lateral_offset(self):
+        mask = self._corridor_mask(lambda row: self.BEV_W / 2.0)
+        path = bev_mask_to_centerline_path(mask, min_row_pixels=5,
+                                            bev_width_px=self.BEV_W, bev_height_px=self.BEV_H,
+                                            bev_meters_per_pixel=self.MPP)
+        assert len(path) == self.BEV_H
+        y_lefts = np.array([y for _, y in path])
+        np.testing.assert_allclose(y_lefts, 0.0, atol=self.MPP)  # within half a pixel
+
+    def test_straight_corridor_forward_distance_increases_from_robot_outward(self):
+        mask = self._corridor_mask(lambda row: self.BEV_W / 2.0)
+        path = bev_mask_to_centerline_path(mask, min_row_pixels=5,
+                                            bev_width_px=self.BEV_W, bev_height_px=self.BEV_H,
+                                            bev_meters_per_pixel=self.MPP)
+        x_forwards = np.array([x for x, _ in path])
+        assert np.all(np.diff(x_forwards) > 0)  # near (robot) -> far, strictly increasing
+        assert x_forwards[0] == pytest.approx(self.MPP, abs=1e-9)  # row=H-1, nearest to robot
+        assert x_forwards[-1] == pytest.approx(self.BEV_H * self.MPP, abs=1e-9)  # row=0, farthest
+
+    def test_curved_corridor_lateral_offset_tracks_known_curve(self):
+        """Corridor that drifts linearly leftward as it recedes (row decreases)
+        — the extracted centerline's y_left must track the known drift."""
+        slope_px_per_row = 0.3
+
+        def col_center(row):
+            return self.BEV_W / 2.0 + slope_px_per_row * (self.BEV_H - 1 - row)
+
+        mask = self._corridor_mask(col_center)
+        path = bev_mask_to_centerline_path(mask, min_row_pixels=5,
+                                            bev_width_px=self.BEV_W, bev_height_px=self.BEV_H,
+                                            bev_meters_per_pixel=self.MPP)
+        for x_forward, y_left in path:
+            row = self.BEV_H - x_forward / self.MPP
+            expected_col = col_center(row)
+            expected_y_left = (self.BEV_W / 2.0 - expected_col) * self.MPP
+            assert y_left == pytest.approx(expected_y_left, abs=self.MPP)
+
+    def test_rows_below_min_pixel_threshold_are_skipped_as_holes(self):
+        mask = self._corridor_mask(lambda row: self.BEV_W / 2.0)  # full-width rows elsewhere
+        gap_rows = [40, 41, 42]
+        for row in gap_rows:
+            mask[row] = 0
+            mask[row, 48:50] = 255  # only 2 lit pixels — below min_row_pixels=5
+
+        path = bev_mask_to_centerline_path(mask, min_row_pixels=5,
+                                            bev_width_px=self.BEV_W, bev_height_px=self.BEV_H,
+                                            bev_meters_per_pixel=self.MPP)
+        assert len(path) == self.BEV_H - len(gap_rows)
+
+        gap_x_forwards = {(self.BEV_H - r) * self.MPP for r in gap_rows}
+        present_x_forwards = {x for x, _ in path}
+        assert gap_x_forwards.isdisjoint(present_x_forwards)
+
+    def test_empty_mask_returns_empty_path(self):
+        mask = np.zeros((self.BEV_H, self.BEV_W), dtype=np.uint8)
+        path = bev_mask_to_centerline_path(mask, min_row_pixels=5,
+                                            bev_width_px=self.BEV_W, bev_height_px=self.BEV_H,
+                                            bev_meters_per_pixel=self.MPP)
+        assert path == []
+
+
+class TestSegmentationToPathEndToEnd:
+    """Ties the re-derived homography together with mask_to_bev +
+    bev_mask_to_centerline_path: a known straight corridor in world-level
+    ground coordinates is projected into a synthetic *raw camera image* mask
+    (independent of the homography under test — via the same from-scratch
+    R_total + pinhole projection helper used in TestGroundToImageHomography),
+    then run through the real mask_to_bev -> bev_mask_to_centerline_path
+    pipeline, and the recovered centerline must match the known corridor
+    centerline."""
+
+    def test_known_world_corridor_recovered_through_full_pipeline(self):
+        bev_w, bev_h, mpp = 200, 200, 0.02
+        mount_pitch_deg = 10.0
+        chassis_pitch_deg = 3.0
+        y_center = 0.3  # corridor centered 0.3 m left of the robot's forward axis
+        half_width = 0.4  # 0.8 m wide corridor
+
+        r_total = _r_total(0.0, mount_pitch_deg, 0.0, chassis_pitch_deg)
+        accel_body = r_total.inv().apply([0, 0, G])
+        roll_meas, pitch_meas = roll_pitch_from_accel_body(accel_body)
+
+        img_w, img_h = 640, 480
+        raw_mask = np.zeros((img_h, img_w), dtype=np.uint8)
+        corners_world = []
+        for x_forward in np.linspace(0.8, 3.5, 60):
+            for y_left in (y_center - half_width, y_center + half_width):
+                corners_world.append((x_forward, y_left))
+        pixels = np.array([
+            _independent_raw_pixel(r_total, xf, yl) for xf, yl in corners_world
+        ], dtype=np.float32)
+        hull = cv2.convexHull(pixels)
+        cv2.fillConvexPoly(raw_mask, hull.astype(np.int32), 255)
+
+        h_full = image_to_bev_homography(
+            CAMERA_MATRIX, roll_meas, pitch_meas, 0.0, np.radians(mount_pitch_deg),
+            CAMERA_HEIGHT, bev_w, bev_h, mpp)
+        bev_mask = mask_to_bev(raw_mask, h_full, bev_w, bev_h)
+
+        path = bev_mask_to_centerline_path(bev_mask, min_row_pixels=5,
+                                            bev_width_px=bev_w, bev_height_px=bev_h,
+                                            bev_meters_per_pixel=mpp)
+
+        recovered = [(x, y) for x, y in path if 1.2 <= x <= 3.0]
+        assert len(recovered) > 20
+        y_lefts = np.array([y for _, y in recovered])
+        np.testing.assert_allclose(y_lefts, y_center, atol=0.05)

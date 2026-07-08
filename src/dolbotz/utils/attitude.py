@@ -1,7 +1,7 @@
 """
 IMU 자세(roll/pitch) 추정 공용 유틸리티 — ROS 의존성 없음.
 
-elevation_map.py와 slope_drive.py가 둘 다 RealSense 카메라에 내장된 동일한
+elevation_map.py와 flat_drive.py가 둘 다 RealSense 카메라에 내장된 동일한
 IMU('/camera/camera/imu', frame_id 'camera_*_optical_frame')를 구독해서 자세를
 추정하므로, 이 모듈로 뽑아 공유한다.
 
@@ -25,8 +25,8 @@ import numpy as np
 # 고정 축 규약 상수
 # ---------------------------------------------------------------------------
 
-# Body 프레임(x=전방, y=왼쪽, z=위, gradient_map.py/slope_drive.py와 일치)에서
-# 카메라 optical 프레임(x=오른쪽, y=아래, z=전방)으로. slope_drive.py의
+# Body 프레임(x=전방, y=왼쪽, z=위, gradient_map.py/flat_drive.py와 일치)에서
+# 카메라 optical 프레임(x=오른쪽, y=아래, z=전방)으로. flat_drive.py의
 # R_body_to_optical과 동일한 상수이며, 그곳에서 축 치환으로 검증됨.
 R_BODY_TO_OPTICAL = np.array([
     [0., -1., 0.],
