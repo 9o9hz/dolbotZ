@@ -85,7 +85,7 @@ ros2 run dolbotz flat_drive --ros-args \
 >   (b) 이후 계속 이 값을 쓰기 — `attitude.py`의 상수 자체를 수정
 >   (c) 카메라별로 실측값을 자동 적용 — `config/calibration/`에 해당 카메라
 >       `camera_serial_no`의 캘리브레이션 피클을 넣어두고 `-p
->       camera_serial_no:=339222071362`처럼 지정하면, 그 피클에 있는 값이
+>       camera_serial_no:=117222251401`처럼 지정하면, 그 피클에 있는 값이
 >       `attitude.py` 상수보다 우선 적용된다 (피클 스키마는
 >       `config/calibration/README.md` 참고 — 아직 피클을 만드는 스크립트는
 >       없고 스키마만 정해져 있다).
@@ -119,7 +119,7 @@ ros2 run dolbotz elevation_map --ros-args \
 
 > **주의 — min_depth_m/blind_fill_forward_m**: 실측 전 임시값입니다
 > (`src/dolbotz/elevation_map.py`의 PLACEHOLDER 주석 참고). 실제 하드웨어
-> (D435I 최소 인식거리 등)에 맞춰 조정이 필요합니다.
+> (D455 최소 인식거리 등)에 맞춰 조정이 필요합니다.
 >
 > **주의 — 카메라 마운트 파라미터**: `camera_height_m`, `camera_pitch_offset_deg`,
 > `camera_roll_offset_deg`, `complementary_filter_alpha`의 기본값/오버라이드

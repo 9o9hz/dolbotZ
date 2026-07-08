@@ -49,7 +49,7 @@ MOUNT_*_PLACEHOLDER / COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER 상수 참고 —
   resolution_m             float  기본값 0.15   — 그리드 셀 크기 [m], gradient_map.py 기본값과 일치
   grid_forward_m           float  기본값 4.0    — 전방 맵 범위 [m]
   grid_width_m             float  기본값 4.0    — 측면 맵 범위 [m] (±grid_width_m/2)
-  min_depth_m               float  기본값 0.5    — D435i 최소 인식거리 고려해 상향, PLACEHOLDER
+  min_depth_m               float  기본값 0.5    — D455 최소 인식거리(~0.5m급) 고려해 상향, PLACEHOLDER
   max_depth_m               float  기본값 4.0
   blind_fill_forward_m      float  기본값 0.6    — 사각지대 0.0 채움 범위 [m], PLACEHOLDER
   complementary_filter_alpha float attitude.COMPLEMENTARY_FILTER_ALPHA_PLACEHOLDER
@@ -80,7 +80,7 @@ from dolbotz.utils.attitude import (
 # 고정 임계값 상수
 # ---------------------------------------------------------------------------
 
-# PLACEHOLDER — D435i의 최소 인식거리(~0.5~0.6m)와 FOV 하단 한계를 고려해 상향된
+# PLACEHOLDER — D455의 최소 인식거리(~0.5~0.6m)와 FOV 하단 한계를 고려해 상향된
 # 임시값. 로봇 발밑(그리드 원점 근방)은 depth로 실측이 불가능한 사각지대이므로
 # 이 범위 안의 NaN 셀은 "발밑 지면 = 0"으로 채운다. 실측 후 실제 카메라
 # 사각지대 크기에 맞춰 조정할 것.

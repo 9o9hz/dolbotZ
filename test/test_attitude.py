@@ -42,6 +42,11 @@ class TestMountConstants:
 # ---------------------------------------------------------------------------
 
 class TestResolveMountDefaults:
+    """Serial numbers used below are deliberately dummy placeholders, not a
+    real camera on this robot — which physical camera serves which role
+    (driving vs arm) has changed before, and this override-priority logic is
+    generic w.r.t. serial_no anyway."""
+
     def test_no_calibration_falls_back_to_constants(self, monkeypatch):
         monkeypatch.setattr(attitude_module, 'load_calibration', lambda serial_no: None)
 
@@ -55,7 +60,7 @@ class TestResolveMountDefaults:
 
     def test_full_calibration_overrides_all_constants(self, monkeypatch):
         pickle_values = {
-            'serial_no': '339222071362',
+            'serial_no': '000000000000',
             'camera_height_m': 0.512,
             'camera_pitch_offset_deg': 9.3,
             'camera_roll_offset_deg': -0.4,
@@ -63,7 +68,7 @@ class TestResolveMountDefaults:
         }
         monkeypatch.setattr(attitude_module, 'load_calibration', lambda serial_no: pickle_values)
 
-        defaults = resolve_mount_defaults('339222071362')
+        defaults = resolve_mount_defaults('000000000000')
         assert defaults == {
             'camera_height_m': 0.512,
             'camera_pitch_offset_deg': 9.3,
@@ -75,14 +80,14 @@ class TestResolveMountDefaults:
         """A pickle missing complementary_filter_alpha (e.g. an older schema
         version) must fall back to the constant for that one key only."""
         pickle_values = {
-            'serial_no': '339222071362',
+            'serial_no': '000000000000',
             'camera_height_m': 0.48,
             'camera_pitch_offset_deg': 11.0,
             'camera_roll_offset_deg': 0.2,
         }
         monkeypatch.setattr(attitude_module, 'load_calibration', lambda serial_no: pickle_values)
 
-        defaults = resolve_mount_defaults('339222071362')
+        defaults = resolve_mount_defaults('000000000000')
         assert defaults['camera_height_m'] == 0.48
         assert defaults['camera_pitch_offset_deg'] == 11.0
         assert defaults['camera_roll_offset_deg'] == 0.2
@@ -96,8 +101,8 @@ class TestResolveMountDefaults:
             return None
         monkeypatch.setattr(attitude_module, 'load_calibration', _fake_load)
 
-        resolve_mount_defaults('D435I_339222071362')
-        assert received['serial_no'] == 'D435I_339222071362'
+        resolve_mount_defaults('ANY_SERIAL_NO_STRING')
+        assert received['serial_no'] == 'ANY_SERIAL_NO_STRING'
 
 
 # ---------------------------------------------------------------------------

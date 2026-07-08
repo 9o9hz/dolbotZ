@@ -133,14 +133,18 @@ class TestLoadCalibration:
 
     def test_nonexistent_calibration_dir_returns_none(self, monkeypatch, tmp_path):
         monkeypatch.setattr(paths_module, 'get_calibration_dir', lambda: tmp_path / 'does_not_exist')
-        assert load_calibration('339222071362') is None
+        assert load_calibration('000000000000') is None
 
     def test_matching_pickle_is_loaded_and_parsed(self, monkeypatch, tmp_path):
+        # Deliberately a dummy camera model/serial, not a real one on this
+        # robot — which physical camera is used for what has changed before
+        # (driving vs arm camera swap) and this test only exercises the
+        # generic pickle-loading mechanism, not any real camera assignment.
         monkeypatch.setattr(paths_module, 'get_calibration_dir', lambda: tmp_path)
-        serial = '339222071362'
+        serial = '000000000000'
         payload = {
             'serial_no': serial,
-            'camera_model': 'D435I',
+            'camera_model': 'TESTCAM',
             'measured_at': '2026-07-08T00:00:00',
             'camera_height_m': 0.52,
             'camera_pitch_offset_deg': 9.4,
@@ -149,7 +153,7 @@ class TestLoadCalibration:
             'dist_coeffs': None,
             'accel_reference_body': None,
         }
-        with open(tmp_path / f'D435I_{serial}.pkl', 'wb') as f:
+        with open(tmp_path / f'TESTCAM_{serial}.pkl', 'wb') as f:
             pickle.dump(payload, f)
 
         result = load_calibration(serial)
@@ -160,8 +164,8 @@ class TestLoadCalibration:
         a misnamed/miscopied calibration file — this should fail loudly rather
         than silently applying the wrong camera's calibration."""
         monkeypatch.setattr(paths_module, 'get_calibration_dir', lambda: tmp_path)
-        with open(tmp_path / 'D435I_339222071362.pkl', 'wb') as f:
+        with open(tmp_path / 'TESTCAM_000000000000.pkl', 'wb') as f:
             pickle.dump({'serial_no': 'WRONG_SERIAL'}, f)
 
         with pytest.raises(ValueError):
-            load_calibration('339222071362')
+            load_calibration('000000000000')
