@@ -6,11 +6,129 @@ from sensor_msgs.msg import Image, CameraInfo, Imu
 from geometry_msgs.msg import PointStamped, Twist
 from std_msgs.msg import Float64MultiArray, Float32
 import cv2
-import cv2.ximgproc
 import numpy as np
 from cv_bridge import CvBridge, CvBridgeError
 from scipy.spatial.transform import Rotation
 from dolbotz.utils.pruning import prune_branches
+from dolbotz.utils.attitude import R_BODY_TO_OPTICAL
+
+
+# ---------------------------------------------------------------------------
+# 순수 계산 — ROS 의존성 없음 (지면 호모그래피)
+# ---------------------------------------------------------------------------
+#
+# 좌표 규약 (elevation_map.py/gradient_map.py와 일치): world-level(=body-level)
+# 프레임은 카메라 위치를 원점으로 하며 x=전방, y=왼쪽, z=위이다. 지면은
+# z=-camera_height_m 평면으로 취급한다 (elevation_map.py의
+# `elevation = pts_level[:,2] + camera_height_m` 규약과 동일 — 지면
+# elevation=0은 z=-camera_height_m에 대응).
+#
+# 이 노드의 IMU는 elevation_map.py와 동일한 카메라 내장 IMU이므로 동일한
+# 원칙이 적용된다: roll_meas/pitch_meas(상보필터 추정치)는 이미 마운트+섀시
+# 결합 총 기울기이며, 한 번만 되돌리면 world-level에 도달한다.
+# camera_body_to_level_matrix()의 관계를 그대로 재사용한다:
+#   R_meas := Rotation.from_euler('xyz', [roll_meas, pitch_meas, 0])
+#   accel_camera_frame = R_meas.inv().apply(accel_world_level)
+# 즉 R_meas.inv()가 world-level → camera-현재-body 프레임 회전이다.
+
+
+def ground_to_image_homography(
+    camera_matrix: np.ndarray,
+    roll_meas: float,
+    pitch_meas: float,
+    roll_offset: float,
+    pitch_offset: float,
+    camera_height_m: float,
+) -> np.ndarray:
+    """지면(z=-camera_height_m 평면) 위의 world-level 좌표 (x_forward, y_left)를
+    원본(왜곡보정된) 카메라 이미지의 동차 픽셀 좌표로 매핑하는 3x3 호모그래피
+    H_g2i를 핀홀 투영식으로부터 처음부터 유도한다.
+
+    유도:
+      P_level = [x_forward, y_left, -camera_height_m]  (지면 위 점, 카메라 위치 원점)
+      P_body_current = R_meas.inv().apply(P_level)      (world-level → 카메라 현재 body 프레임)
+      P_optical = R_BODY_TO_OPTICAL @ P_body_current    (body → optical, 검증된 상수)
+      [u,v,w] ~ camera_matrix @ P_optical                (표준 핀홀 투영)
+
+    A := R_BODY_TO_OPTICAL @ R_meas.inv().as_matrix() 로 두면
+    P_optical = x_forward*A[:,0] + y_left*A[:,1] - camera_height_m*A[:,2] 이므로
+      H_g2i = camera_matrix @ [A[:,0], A[:,1], -camera_height_m*A[:,2]]
+    (열벡터 3개를 나열한 3x3 행렬).
+
+    roll_offset/pitch_offset은 camera_body_to_level_matrix()와 동일한 이유로
+    이 계산에 쓰이지 않는다 — roll_meas/pitch_meas가 이미 마운트+섀시 결합
+    총 기울기이므로 마운트 오프셋을 별도로 다시 반영하면 존재하지 않는
+    성분을 중복 제거/추가하는 오차가 생긴다. 호출 시그니처는 마운트 오프셋
+    값을 호출부에 명시적으로 남겨두기 위해 유지한다.
+    """
+    del roll_offset, pitch_offset  # 의도적으로 미사용 — 위 docstring 참고
+    r_meas_inv = Rotation.from_euler('xyz', [roll_meas, pitch_meas, 0]).inv()
+    a = R_BODY_TO_OPTICAL @ r_meas_inv.as_matrix()
+    ground_cols = np.column_stack([a[:, 0], a[:, 1], -camera_height_m * a[:, 2]])
+    return camera_matrix @ ground_cols
+
+
+def bev_ground_projection_matrix(
+    bev_width_px: int,
+    bev_height_px: int,
+    bev_meters_per_pixel: float,
+) -> np.ndarray:
+    """world-level 지면 좌표 (x_forward, y_left)를 BEV 픽셀 (col, row)로 매핑하는
+    3x3 아핀 행렬 M.
+
+    BEV 이미지 레이아웃(일반적인 주행 BEV 관례 — 로봇이 이미지 하단 중앙에
+    위치, 전방이 이미지 위쪽으로 멀어짐):
+      col(가로) = bev_width_px/2  - y_left / mpp   (y_left>0=왼쪽 → col 감소, 즉 이미지 왼쪽)
+      row(세로) = bev_height_px   - x_forward / mpp (x_forward↑ → row 감소, 즉 이미지 위쪽)
+
+    row=bev_height_px-1(하단)이 로봇 바로 앞(x_forward≈0), row=0(상단)이
+    가장 먼 전방이다. 이 레이아웃 덕분에 "row별로 훑으며 좌우(col) 중심을
+    구해 전방 경로점으로 삼는다"는 이후 단계(bev_mask_to_centerline_path)가
+    자연스럽게 성립한다.
+    """
+    mpp = bev_meters_per_pixel
+    return np.array([
+        [0.0, -1.0 / mpp, bev_width_px / 2.0],
+        [-1.0 / mpp, 0.0, float(bev_height_px)],
+        [0.0, 0.0, 1.0],
+    ])
+
+
+def bev_pixel_to_meters(
+    row: float,
+    col: float,
+    bev_width_px: int,
+    bev_height_px: int,
+    bev_meters_per_pixel: float,
+) -> tuple[float, float]:
+    """bev_ground_projection_matrix()의 역변환: BEV 픽셀 (row, col) -> world-level
+    미터 좌표 (x_forward, y_left)."""
+    mpp = bev_meters_per_pixel
+    x_forward = (bev_height_px - row) * mpp
+    y_left = (bev_width_px / 2.0 - col) * mpp
+    return float(x_forward), float(y_left)
+
+
+def image_to_bev_homography(
+    camera_matrix: np.ndarray,
+    roll_meas: float,
+    pitch_meas: float,
+    roll_offset: float,
+    pitch_offset: float,
+    camera_height_m: float,
+    bev_width_px: int,
+    bev_height_px: int,
+    bev_meters_per_pixel: float,
+) -> np.ndarray:
+    """원본 이미지 픽셀 -> BEV 픽셀 순방향 호모그래피 (cv2.warpPerspective(src, H,
+    (bev_width_px, bev_height_px))에 바로 사용). ground_to_image_homography()의
+    역행렬(image->ground)에 bev_ground_projection_matrix()(ground->bev)를
+    합성한다."""
+    h_g2i = ground_to_image_homography(
+        camera_matrix, roll_meas, pitch_meas, roll_offset, pitch_offset, camera_height_m)
+    h_i2g = np.linalg.inv(h_g2i)
+    m = bev_ground_projection_matrix(bev_width_px, bev_height_px, bev_meters_per_pixel)
+    return m @ h_i2g
 
 
 class UnifiedDriveNode(Node):
