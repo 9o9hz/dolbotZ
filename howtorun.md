@@ -195,7 +195,9 @@ IMU 자세 추정 + 마운트 파라미터 공용 모듈입니다.
 
 - `config/models/` — 학습된 모델 가중치 (`supplybest.pt`, `dolbotz_seg_v1/`).
   `dolbotz.utils.paths.get_models_dir()`로 코드가 실행 환경과 무관하게 찾는다.
-  자세한 이동 내역은 `config/models/README.md` 참고.
+  자세한 이동 내역은 `config/models/README.md` 참고. 새로 재학습하려면
+  `train_drive_area.py` 실행 전에 `export ROBOFLOW_API_KEY=...`로 환경변수를
+  설정해야 한다(코드에 키를 하드코딩하지 말 것).
 - `config/model_paths.yaml` — 문서화 + override 템플릿 (실제 로딩에는 쓰이지 않음).
 - `config/calibration/` — 카메라별 실측 캘리브레이션 피클이 들어갈 자리
   (아직 생성 스크립트 없음). 스키마/네이밍은 `config/calibration/README.md` 참고.
