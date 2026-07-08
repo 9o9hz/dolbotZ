@@ -190,30 +190,76 @@ def _synth_optical_points(r_level, level_xyz_cam_relative):
 
 
 class TestCameraBodyToLevelMatrix:
-    def test_flat_floor_reads_zero_regardless_of_mount_tilt(self):
-        """A perfectly level chassis looking at a flat floor must read elevation ~= 0,
-        even though the camera itself is physically tilted by the mount offset."""
-        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
-        level_pts = np.array([
-            [1.0, 0.0, -CAMERA_HEIGHT],
-            [1.0, 0.8, -CAMERA_HEIGHT],
-            [2.0, -0.5, -CAMERA_HEIGHT],
-        ])
-        optical_pts = _synth_optical_points(r_level, level_pts)
+    """Independent-physics tests.
 
-        recovered = (optical_pts @ R_BODY_TO_OPTICAL) @ r_level.T
-        elevation = recovered[:, 2] + CAMERA_HEIGHT
-        np.testing.assert_allclose(elevation, 0.0, atol=1e-5)
+    These deliberately do NOT use `_synth_optical_points()` / `_level_matrix()`
+    (which build synthetic data from `np.linalg.inv(r_level)` where `r_level` is
+    the very output of the function under test — a tautology that cancels out
+    any bug in camera_body_to_level_matrix, including the double mount-offset
+    removal bug this class caught). Instead, `_r_total()` builds the one true
+    physical rotation (mount tilt composed with chassis dynamic lean) completely
+    independently of camera_body_to_level_matrix, and world-level ground-truth
+    points/slopes are defined by hand before being transformed into what the
+    camera would actually observe.
+    """
 
-    def test_flat_floor_still_zero_with_extra_dynamic_tilt(self):
-        """Chassis dynamically pitched 8 deg on top of the fixed 10 deg mount tilt —
-        elevation of a flat floor must still read ~0 once mount offset is subtracted."""
-        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=8, mount_pitch_deg=10.0)
-        level_pts = np.array([[1.0, 0.0, -CAMERA_HEIGHT], [2.0, 0.0, -CAMERA_HEIGHT]])
-        optical_pts = _synth_optical_points(r_level, level_pts)
-        recovered = (optical_pts @ R_BODY_TO_OPTICAL) @ r_level.T
-        elevation = recovered[:, 2] + CAMERA_HEIGHT
-        np.testing.assert_allclose(elevation, 0.0, atol=1e-5)
+    @staticmethod
+    def _r_total(mount_roll_deg, mount_pitch_deg, chassis_roll_deg, chassis_pitch_deg) -> Rotation:
+        """The real physical rotation from world-level to the camera's current
+        frame: fixed mount tilt composed with the chassis's current dynamic lean.
+        This is what the camera's onboard accelerometer actually measures — never
+        calls into elevation_map.py."""
+        mount = Rotation.from_euler(
+            'xyz', [np.radians(mount_roll_deg), np.radians(mount_pitch_deg), 0])
+        chassis = Rotation.from_euler(
+            'xyz', [np.radians(chassis_roll_deg), np.radians(chassis_pitch_deg), 0])
+        return mount * chassis
+
+    @pytest.mark.parametrize("mount_pitch_deg", [0.0, 10.0, 20.0])
+    @pytest.mark.parametrize("chassis_pitch_deg", [0.0, 7.0, -7.0])
+    def test_known_slope_recovered_independent_of_mount_offset(self, mount_pitch_deg, chassis_pitch_deg):
+        """A terrain point at a known, independently-fixed world-level slope must
+        be recovered at that exact same slope for every mount-offset / chassis-tilt
+        combination — the mount offset must have zero net effect, since the
+        accelerometer's total measured tilt already includes it."""
+        r_total = self._r_total(0.0, mount_pitch_deg, 0.0, chassis_pitch_deg)
+        accel_body = r_total.inv().apply([0, 0, G])
+        roll_meas, pitch_meas = roll_pitch_from_accel_body(accel_body)
+
+        true_slope_deg = 15.0
+        x = 2.0
+        z_level = np.tan(np.radians(true_slope_deg)) * x - CAMERA_HEIGHT
+        p_world_level = np.array([x, 0.0, z_level])
+        # What the camera actually observes, expressed in its own current (tilted) frame.
+        p_body_actual = r_total.inv().apply(p_world_level)
+
+        r_level = camera_body_to_level_matrix(
+            roll_meas, pitch_meas, 0.0, np.radians(mount_pitch_deg))
+        p_recovered = r_level @ p_body_actual
+        recovered_elevation = p_recovered[2] + CAMERA_HEIGHT
+        recovered_slope_deg = np.degrees(np.arctan2(recovered_elevation, x))
+
+        assert recovered_slope_deg == pytest.approx(true_slope_deg, abs=1e-6)
+
+    @pytest.mark.parametrize("mount_pitch_deg", [0.0, 10.0, 20.0])
+    @pytest.mark.parametrize("chassis_pitch_deg", [0.0, 7.0, -7.0])
+    def test_flat_floor_reads_zero_independent_of_tilt(self, mount_pitch_deg, chassis_pitch_deg):
+        """A flat floor (world-level z = -camera_height everywhere) must read
+        elevation ~= 0 for every chassis-tilt / mount-offset combination, using
+        points synthesized directly from an independently-built R_total."""
+        r_total = self._r_total(0.0, mount_pitch_deg, 0.0, chassis_pitch_deg)
+        accel_body = r_total.inv().apply([0, 0, G])
+        roll_meas, pitch_meas = roll_pitch_from_accel_body(accel_body)
+
+        xs = np.array([1.0, 2.0, 3.0])
+        p_world_level = np.stack([xs, np.zeros_like(xs), np.full_like(xs, -CAMERA_HEIGHT)], axis=-1)
+        p_body_actual = r_total.inv().apply(p_world_level)
+
+        r_level = camera_body_to_level_matrix(
+            roll_meas, pitch_meas, 0.0, np.radians(mount_pitch_deg))
+        p_recovered = p_body_actual @ r_level.T
+        elevation = p_recovered[:, 2] + CAMERA_HEIGHT
+        np.testing.assert_allclose(elevation, 0.0, atol=1e-6)
 
 
 class TestPointsToElevationGrid:
