@@ -251,7 +251,7 @@ class TestPointsToElevationGrid:
 
         grid = points_to_elevation_grid(
             points_optical, valid, r_level, CAMERA_HEIGHT, RES,
-            grid_forward_m=4.0, grid_width_m=4.0)
+            grid_forward_m=4.0, grid_width_m=4.0, blind_fill_forward_m=0.0)
 
         row = grid.shape[0] // 2
         cols_with_data = np.where(~np.isnan(grid[row]))[0]
@@ -288,8 +288,47 @@ class TestPointsToElevationGrid:
         points_optical, valid = self._make_points(r_level, level_pts)
         grid = points_to_elevation_grid(
             points_optical, valid, r_level, CAMERA_HEIGHT, RES,
-            grid_forward_m=4.0, grid_width_m=4.0)
+            grid_forward_m=4.0, grid_width_m=4.0, blind_fill_forward_m=0.0)
         assert np.count_nonzero(~np.isnan(grid)) == 1
+
+    def test_blind_spot_filled_with_zero_at_start_cell(self):
+        """Points only land far forward (beyond the blind spot); the near-origin
+        cells within blind_fill_forward_m must still come back as valid (0.0),
+        since plan_path_on_slope_field requires the start cell (row=h//2, col=0)
+        to be traversable."""
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
+        xs = np.linspace(1.0, 3.8, 10)  # nothing observed inside the blind spot
+        level_pts = np.stack([xs, np.zeros_like(xs), np.full_like(xs, -CAMERA_HEIGHT)], axis=-1)
+        points_optical, valid = self._make_points(r_level, level_pts)
+
+        grid = points_to_elevation_grid(
+            points_optical, valid, r_level, CAMERA_HEIGHT, RES,
+            grid_forward_m=4.0, grid_width_m=4.0, blind_fill_forward_m=0.6)
+
+        n_blind_cols = int(np.ceil(0.6 / RES))
+        assert not np.isnan(grid[:, :n_blind_cols]).any()
+        np.testing.assert_allclose(grid[:, :n_blind_cols], 0.0)
+
+    def test_nan_outside_blind_spot_is_not_filled(self):
+        """A gap in observations beyond blind_fill_forward_m (but still within the
+        grid) must remain NaN — only the near-origin blind spot gets zero-filled."""
+        r_level = _level_matrix(dyn_roll_deg=0, dyn_pitch_deg=0, mount_pitch_deg=10.0)
+        # Observe only a thin strip right at the edge of the grid, leaving a large
+        # unobserved gap between the blind spot and the observed strip.
+        xs = np.linspace(3.5, 3.8, 5)
+        level_pts = np.stack([xs, np.zeros_like(xs), np.full_like(xs, -CAMERA_HEIGHT)], axis=-1)
+        points_optical, valid = self._make_points(r_level, level_pts)
+
+        grid = points_to_elevation_grid(
+            points_optical, valid, r_level, CAMERA_HEIGHT, RES,
+            grid_forward_m=4.0, grid_width_m=4.0, blind_fill_forward_m=0.6)
+
+        n_blind_cols = int(np.ceil(0.6 / RES))
+        mid_row = grid.shape[0] // 2
+        # A column well beyond the blind spot but before the observed strip.
+        gap_col = n_blind_cols + 2
+        assert gap_col < grid.shape[1]
+        assert np.isnan(grid[mid_row, gap_col])
 
     def test_median_aggregation_ignores_outlier(self):
         """Several points in the same cell plus one wild outlier -> median, not mean/max."""
@@ -301,7 +340,7 @@ class TestPointsToElevationGrid:
 
         grid = points_to_elevation_grid(
             points_optical, valid, r_level, CAMERA_HEIGHT, RES,
-            grid_forward_m=4.0, grid_width_m=4.0)
+            grid_forward_m=4.0, grid_width_m=4.0, blind_fill_forward_m=0.0)
 
         observed = grid[~np.isnan(grid)]
         assert observed.size == 1
