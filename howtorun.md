@@ -65,6 +65,30 @@ ros2 run dolbotz slope_decision --ros-args \
 발행: `/terrain/side_slope_angle_deg`
 OpenCV 창(`SlopeVisualizer`)으로 깊이 ROI/기울기 값을 표시하므로 헤드리스 환경에서는 X 디스플레이 필요.
 
+### elevation_map (depth+IMU → 고도맵 게시, gradient_map의 입력을 만듦)
+
+```bash
+ros2 run dolbotz elevation_map --ros-args \
+  -p depth_topic:=/camera/camera/depth/image_rect_raw \
+  -p camera_info_topic:=/camera/camera/depth/camera_info \
+  -p imu_topic:=/camera/camera/imu \
+  -p camera_height_m:=0.5 \
+  -p camera_pitch_offset_deg:=10.0 \
+  -p camera_roll_offset_deg:=0.0 \
+  -p resolution_m:=0.15 \
+  -p min_depth_m:=0.5 \
+  -p max_depth_m:=4.0 \
+  -p blind_fill_forward_m:=0.6
+```
+
+구독: `/camera/camera/depth/image_rect_raw`, `/camera/camera/depth/camera_info`, `/camera/camera/imu`
+발행: `/terrain/elevation_map` (32FC1, m 단위; NaN=미관측)
+
+> **주의**: `camera_height_m`, `camera_pitch_offset_deg`, `camera_roll_offset_deg`,
+> `min_depth_m`, `blind_fill_forward_m`, `complementary_filter_alpha`는 실측 전
+> 임시값입니다 (`src/dolbotz/elevation_map.py`의 PLACEHOLDER 주석 참고). 실제
+> 하드웨어(장착 각도, D435i 최소 인식거리 등)에 맞춰 조정이 필요합니다.
+
 ### gradient_map (고도맵 → 경사 필드 → 슬로프 제한 경로 계획)
 
 ```bash
@@ -77,10 +101,9 @@ ros2 run dolbotz gradient_map --ros-args \
 발행: `/terrain/gradient_x`, `/terrain/gradient_y`, `/terrain/gradient_magnitude`,
 `/terrain/gradient_direction`, `/terrain/slope_deg`, `/terrain/planned_path` (`nav_msgs/Path`)
 
-> **주의**: 이 저장소에는 아직 `/terrain/elevation_map`을 발행하는 노드가 없습니다.
-> 고도맵을 만드는 별도 elevation-mapping 노드(또는 시뮬레이션/bag 재생)를 함께 띄워야
-> `gradient_map`이 실제로 동작합니다. `max_slope_deg`는 실측 전 임시값(30°)입니다
+> **주의**: `max_slope_deg`는 실측 전 임시값(30°)입니다
 > (`src/dolbotz/gradient_map.py`의 `MAX_SLOPE_DEG_PLACEHOLDER` 참고).
+> `/terrain/elevation_map`을 게시하는 `elevation_map` 노드를 먼저(또는 함께) 띄워야 합니다.
 
 ### arm_pickup (YOLO로 박스 탐지 → 3D 좌표 퍼블리시)
 
