@@ -13,6 +13,10 @@ dolbotZ drivable-area segmentation 학습 스크립트
 끝나면 생성되는 것:
   runs/segment/dolbotz_seg_v1/weights/best.pt          <- GPU/일반 PyTorch용
   runs/segment/dolbotz_seg_v1/weights/best_openvino_model/  <- i7 배포용 (이 폴더를 통째로 복사)
+
+yolo26n-seg.pt는 git에 포함되지 않음(.gitignore). YOLO("yolo26n-seg.pt") 최초
+실행 시 ultralytics가 자동 다운로드하며, 오프라인 환경(대회장 등)에서 재학습이
+필요할 수 있다면 사전에 파일을 받아 리포 루트에 두어야 함.
 """
 
 import shutil

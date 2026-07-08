@@ -18,3 +18,7 @@ log/
 # 수동 복사한다 (config/models/README.md 참고). 재현 가능한 산출물이라
 # git으로 추적하지 않는다.
 runs/
+
+# 사전학습 베이스 가중치 — ultralytics가 YOLO("yolo26n-seg.pt") 최초 실행 시
+# 자동 다운로드하므로 git에 포함하지 않는다. train_drive_area.py 상단 주석 참고.
+yolo26n-seg.pt
