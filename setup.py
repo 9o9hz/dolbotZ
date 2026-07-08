@@ -31,6 +31,7 @@ setup(
             "slope_drive = dolbotz.slope_drive:main",
             "arm_pickup = dolbotz.arm_pickup:main",
             "gradient_map = dolbotz.gradient_map:main",
+            "elevation_map = dolbotz.elevation_map:main",
             "arm_visualizer = dolbotz.arm_visualizer:main",
         ],
     },
