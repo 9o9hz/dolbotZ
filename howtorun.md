@@ -3,6 +3,11 @@
 ROS2 (Humble) 패키지. 이 디렉터리(`/home/j/dolbotZ`) 자체가 워크스페이스 겸 패키지 루트입니다
 (`package.xml`이 루트에 있고, `colcon build`도 이 디렉터리에서 실행합니다).
 
+https://github.com/sw-works-log/manual100_combined.git
+https://github.com/harim-54/only_manual.git
+
+
+
 ## 0. 사전 준비
 
 ```bash
