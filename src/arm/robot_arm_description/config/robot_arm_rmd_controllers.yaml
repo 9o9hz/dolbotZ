@@ -1,0 +1,18 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+position_controller:
+  ros__parameters:
+    joints:
+      - shoulder_lift_joint
+      - elbow_joint
+      # wrist 하드웨어 세팅 전까지 비활성화
+      # - wrist_joint
+    interface_name: position

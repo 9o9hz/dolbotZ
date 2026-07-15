@@ -1,0 +1,143 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="test_urdf">
+  <xacro:arg name="ifname" default="can_arm"/>
+  <xacro:arg name="shoulder_actuator_id" default="4"/>
+  <xacro:arg name="elbow_actuator_id" default="5"/>
+  <xacro:arg name="wrist_actuator_id" default="6"/>
+  <xacro:arg name="timeout" default="0"/>
+  <xacro:arg name="max_velocity" default="30.0"/>
+  <xacro:arg name="shoulder_torque_constant" default="1.0"/>
+  <xacro:arg name="elbow_torque_constant" default="1.0"/>
+  <xacro:arg name="wrist_torque_constant" default="1.0"/>
+
+  <xacro:macro name="box_inertial" params="mass x y z">
+    <inertial>
+      <mass value="${mass}"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="${mass * (y*y + z*z) / 12.0}" ixy="0" ixz="0"
+               iyy="${mass * (x*x + z*z) / 12.0}" iyz="0"
+               izz="${mass * (x*x + y*y) / 12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="rmd_actuator" params="name joint_name actuator_id torque_constant">
+    <ros2_control name="${name}" type="actuator">
+      <hardware>
+        <plugin>rmd_hardware_interface/MyActuatorRmdHardwareInterface</plugin>
+        <param name="ifname">$(arg ifname)</param>
+        <param name="actuator_id">${actuator_id}</param>
+        <param name="torque_constant">${torque_constant}</param>
+        <param name="max_velocity">$(arg max_velocity)</param>
+        <param name="velocity_alpha">0.1</param>
+        <param name="effort_alpha">0.1</param>
+        <param name="timeout">$(arg timeout)</param>
+      </hardware>
+      <joint name="${joint_name}">
+        <command_interface name="position"/>
+        <command_interface name="velocity"/>
+        <command_interface name="effort"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+    </ros2_control>
+  </xacro:macro>
+
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.20 0.20 0.05"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.20 0.20 0.05"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertial mass="1.0" x="0.20" y="0.20" z="0.05"/>
+  </link>
+
+  <link name="shoulder_link">
+    <visual>
+      <origin xyz="0.15 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.30 0.05 0.05"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.15 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.30 0.05 0.05"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertial mass="0.5" x="0.30" y="0.05" z="0.05"/>
+  </link>
+
+  <joint name="shoulder_lift_joint" type="revolute">
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="shoulder_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="50.0" velocity="1.0"/>
+  </joint>
+
+  <link name="elbow_link">
+    <visual>
+      <origin xyz="0.125 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.25 0.04 0.04"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.125 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.25 0.04 0.04"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertial mass="0.4" x="0.25" y="0.04" z="0.04"/>
+  </link>
+
+  <joint name="elbow_joint" type="revolute">
+    <origin xyz="0.30 0 0" rpy="0 0 0"/>
+    <parent link="shoulder_link"/>
+    <child link="elbow_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14159" upper="3.14159" effort="40.0" velocity="1.0"/>
+  </joint>
+
+  <link name="wrist_link">
+    <visual>
+      <origin xyz="0.075 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.15 0.035 0.035"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.075 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.15 0.035 0.035"/>
+      </geometry>
+    </collision>
+    <xacro:box_inertial mass="0.25" x="0.15" y="0.035" z="0.035"/>
+  </link>
+
+  <joint name="wrist_joint" type="revolute">
+    <origin xyz="0.25 0 0" rpy="0 0 0"/>
+    <parent link="elbow_link"/>
+    <child link="wrist_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.14159" upper="3.14159" effort="25.0" velocity="1.0"/>
+  </joint>
+
+  <xacro:rmd_actuator name="shoulder_rmd" joint_name="shoulder_lift_joint"
+                      actuator_id="$(arg shoulder_actuator_id)"
+                      torque_constant="$(arg shoulder_torque_constant)"/>
+  <xacro:rmd_actuator name="elbow_rmd" joint_name="elbow_joint"
+                      actuator_id="$(arg elbow_actuator_id)"
+                      torque_constant="$(arg elbow_torque_constant)"/>
+  <!-- wrist 하드웨어 세팅 전까지 CAN 액추에이터 등록을 비활성화합니다.
+  <xacro:rmd_actuator name="wrist_rmd" joint_name="wrist_joint"
+                      actuator_id="$(arg wrist_actuator_id)"
+                      torque_constant="$(arg wrist_torque_constant)"/>
+  -->
+</robot>

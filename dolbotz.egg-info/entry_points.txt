@@ -1,3 +1,0 @@
-[console_scripts]
-slope_decision = dolbotz.slope_decision:main
-

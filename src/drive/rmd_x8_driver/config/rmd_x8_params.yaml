@@ -1,0 +1,38 @@
+rmd_x8_driver:
+  ros__parameters:
+    can_interface: "can0"
+
+    left_motor_can_id: 1
+    right_motor_can_id: 2
+
+    # Physical mounting direction: RMD-X8 units are typically mounted
+    # mirrored left/right, so one side usually needs its sign flipped
+    # so that "positive body vx" drives both wheels forward.
+    # VERIFY ON THE BENCH before trusting this default.
+    left_direction_sign: 1.0
+    right_direction_sign: -1.0
+
+    # Measured values (bench-calibrated, see robot.launch.py / README):
+    # 0.225 m was the wheel/sprocket DIAMETER, mistakenly entered as the
+    # radius. Corrected to the actual radius (0.225 / 2).
+    wheel_radius_m: 0.1125
+    # Confirmed by physical inspection: wheel/sprocket is direct-coupled to
+    # the RMD-X8 output shaft, no additional belt/chain/gear stage.
+    external_gear_ratio: 1.0
+
+    # From control_guide.md section 3.1: DO NOT use the geometric track
+    # width. Calibrate via in-place N-rotation test vs IMU yaw and put
+    # the EFFECTIVE value here.
+    effective_track_width_m: 0.4904
+
+    control_rate_hz: 50.0
+    cmd_vel_timeout_s: 0.3        # must be well under the RMD-X 500ms
+                                   # hardware heartbeat cutoff
+    cmd_vel_safety_timeout_s: 0.5 # /cmd_vel_safety priority window (stability_monitor_node Level-2)
+    max_wheel_speed_dps: 3000.0   # hard safety clamp regardless of
+                                   # what Nav2/EKF asks for
+
+    odom_frame_id: "odom"
+    base_frame_id: "base_link"
+    publish_odom_tf: false        # robot_localization publishes odom->base_link;
+                                   # keep this false to avoid a duplicate TF broadcaster
