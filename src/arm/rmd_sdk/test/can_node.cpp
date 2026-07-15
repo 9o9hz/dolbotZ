@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
     ("help", "Visualize help message")
     ("send,s", "Send a CAN frame")
     ("receive,r", "Read a CAN frame")
-    ("ifname", boost::program_options::value(&ifname)->required(), "CAN interface name, e.g. 'can0'")
+    ("ifname", boost::program_options::value(&ifname)->required(), "CAN interface name, e.g. 'can_arm'")
     ("can_id", boost::program_options::value(&can_id), "The CAN node id, e.g. '0x141'")
     ("data", boost::program_options::value(&data), "The data to be sent, e.g. '0xA400F40100000000'")
   ;

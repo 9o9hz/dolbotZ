@@ -11,7 +11,7 @@ Includes only what manual driving + its safety net needs:
     joy_node -> joy_mux_node -> current_ramp_node -> rmd_x8_driver_node
     myahrs_driver_node (IMU) -> stability_monitor_node
 
-can_interface defaults to the real bus ('can0'); pass
+can_interface defaults to the real bus ('can_drive'); pass
 'can_interface:=vcan0' to dry-run against a virtual bus.
 
 The DRIVE MOTOR intervention path (/cmd_vel_safety, subscribed to
@@ -33,10 +33,10 @@ def generate_launch_description():
 
         DeclareLaunchArgument(
             'can_interface',
-            default_value='can0',
+            default_value='can_drive',
             description=(
                 "SocketCAN interface for rmd_x8_driver_node. Default is "
-                "the real bus ('can0'); override with "
+                "the real bus ('can_drive'); override with "
                 "'can_interface:=vcan0' on the ros2 launch command line "
                 "(see RUNNING.md) to dry-run against a virtual bus with "
                 "no motors attached."
@@ -89,7 +89,7 @@ def generate_launch_description():
             output='screen',
         ),
 
-        # [RMD-X8 CAN 구동 드라이버] can_interface 인자로 can0/vcan0 전환
+        # [RMD-X8 CAN 구동 드라이버] can_interface 인자로 can_drive/vcan0 전환
         Node(
             package='rmd_x8_driver',
             executable='rmd_x8_driver_node',
@@ -105,7 +105,7 @@ def generate_launch_description():
                 # (MyActuator X Series-V4 product manual). Rated-based cap
                 # would be 700 dps (~1.37 m/s); TEMP further lowered to
                 # ~40% of that (280 dps, ~0.55 m/s) for the first real
-                # chain-on, real can0 test. Raise gradually only after
+                # chain-on, real can_drive test. Raise gradually only after
                 # confirming clean low-speed behavior, with user approval.
                 'max_wheel_speed_dps': 280.0,
             }],

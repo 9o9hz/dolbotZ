@@ -1,6 +1,6 @@
 rmd_x8_driver:
   ros__parameters:
-    can_interface: "can0"
+    can_interface: "can_drive"
 
     left_motor_can_id: 1
     right_motor_can_id: 2

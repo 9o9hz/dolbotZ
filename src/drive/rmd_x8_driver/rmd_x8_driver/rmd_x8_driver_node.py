@@ -127,7 +127,7 @@ class RmdX8DriverNode(Node):
         super().__init__("rmd_x8_driver_node")
 
         # ---- parameters -------------------------------------------------
-        self.declare_parameter("can_interface", "can0")
+        self.declare_parameter("can_interface", "can_drive")
         self.declare_parameter("left_motor_can_id", 1)
         self.declare_parameter("right_motor_can_id", 2)
         self.declare_parameter("left_direction_sign", 1.0)
