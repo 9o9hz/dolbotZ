@@ -16,11 +16,11 @@ add_executable(myahrs_driver_node src/myahrs_driver_node.cpp)
 target_include_directories(myahrs_driver_node PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
-target_link_libraries(myahrs_driver_node
-  rclcpp::rclcpp
-  sensor_msgs::sensor_msgs
-  std_msgs::std_msgs
-  tf2::tf2
+ament_target_dependencies(myahrs_driver_node
+  rclcpp
+  sensor_msgs
+  std_msgs
+  tf2
 )
 
 # 인스톨 규칙 설정
