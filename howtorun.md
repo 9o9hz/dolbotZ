@@ -72,13 +72,8 @@ ros2 run dolbotz flat_drive --ros-args \
 `/planning/target_point`, `/bev/image`, `/bev/mask`, `/bev/debug_overlay`,
 `/bev/centerline_overlay`, `/bev/H` (디버그용 중간 결과)
 
-> **주의 — model_path**: 기본값은 `dolbotz.utils.paths.get_models_dir()` 기준
-> `config/models/dolbotz_seg_v1/best_openvino_model`로 실행 위치(cwd)나
-> 사용자 홈 경로와 무관하게 항상 절대경로로 계산된다 (과거 `arm_pickup.py`가
-> `/home/j/dolbotZ/...`로 하드코딩되어 있다가 사용자가 바뀌며 깨졌던 문제,
-> 커밋 `6056cf8`, 를 근본적으로 해결한 방식). 다른 모델을 쓰려면
-> `config/model_paths.yaml`을 복사해 값을 채운 뒤 `--params-file`로 넘기거나
-> `-p model_path:=/abs/path`로 직접 오버라이드하세요.
+
+
 >
 > **주의 — 카메라 마운트 파라미터**: `camera_height_m`, `camera_pitch_offset_deg`,
 > `camera_roll_offset_deg`, `complementary_filter_alpha`의 기본값은
