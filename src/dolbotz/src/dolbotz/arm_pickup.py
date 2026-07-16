@@ -76,7 +76,7 @@ class ArmPickupNode(Node):
         sub_depth = message_filters.Subscriber(
             self, Image, depth_topic, qos_profile=qos_profile_sensor_data)
         self._sync = message_filters.ApproximateTimeSynchronizer(
-            [sub_color, sub_depth], queue_size=5, slop=0.3)
+            [sub_color, sub_depth], queue_size=5, slop=0.05)
         self._sync.registerCallback(self._on_frames)
 
         self.pub_point = self.create_publisher(
@@ -103,8 +103,6 @@ class ArmPickupNode(Node):
         return model
 
     def _on_info(self, msg: CameraInfo):
-        if self.fx is None:
-            self.get_logger().info('[DEBUG] camera_info 최초 수신')
         self.fx, self.fy = msg.k[0], msg.k[4]
         self.cx, self.cy = msg.k[2], msg.k[5]
 
@@ -124,10 +122,6 @@ class ArmPickupNode(Node):
         return float(np.median(valid)) if valid.size >= 3 else 0.0
 
     def _on_frames(self, color_msg: CompressedImage, depth_msg: Image):
-        if not getattr(self, '_debug_sync_logged', False):
-            self._debug_sync_logged = True
-            self.get_logger().info(
-                f'[DEBUG] sync 콜백 최초 호출  fx={self.fx}  model_loaded={self.model is not None}')
         if self.fx is None or self.model is None:
             return
 
