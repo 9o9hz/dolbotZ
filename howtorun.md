@@ -215,10 +215,24 @@ source ~/manual2_ws/install/setup.bash
 ros2 topic echo /motor_speed_cmd
 
 
-dolbotZ 로봇팔
 
-ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true
+
+
+# 로봇팔 D435I — arm_pickup 전용
+ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true -p enable_infra1:=false -p enable_infra2:=false -p enable_gyro:=false -p enable_accel:=false
 
 ros2 run dolbotz arm_pickup
 ros2 run dolbotz arm_visualizer
 
+# 로봇팔 rosbag
+ros2 bag record -o arm_pickup_bag \
+  /camera/camera/color/image_raw/compressed \
+  /camera/camera/color/camera_info \
+  /camera/camera/aligned_depth_to_color/image_raw/compressedDepth \
+  /camera/camera/aligned_depth_to_color/camera_info
+
+ros2 bag record -o arm_pickup_bag -a
+
+
+# 주행 D455
+ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'117222251401'" -p enable_color:=true -p enable_depth:=true -p enable_gyro:=true -p enable_accel:=true -p unite_imu_method:=2 -p enable_infra1:=false -p enable_infra2:=false
