@@ -302,22 +302,29 @@ ros2 daemon stop   # 노드 목록이 stale하게 남을 때만
 
 
 
-로봇팔 depth cam 
+로봇팔 depth cam
 
+```bash
 ros2 run realsense2_camera realsense2_camera_node --ros-args \
-
   -p serial_no:="'339222071362'" \
-
   -p enable_color:=true \
-
   -p enable_depth:=true \
-
   -p align_depth.enable:=true
+```
 
+> **주의**: `-p` 옵션 사이에 빈 줄을 넣으면 안 됩니다. bash의 `\` 줄이음이
+> 빈 줄에서 끊겨서 `align_depth.enable:=true`가 실제로 적용되지 않고,
+> `aligned_depth_to_color` 토픽이 발행되지 않는 원인이 됩니다. 위 코드블럭을
+> 그대로 복사하거나, 아래처럼 한 줄로 실행해도 됩니다.
 
+```bash
+ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true
+```
 
+```bash
 ros2 run dolbotz arm_pickup
+```
 
-
-
+```bash
 ros2 run dolbotz arm_visualizer
+```
