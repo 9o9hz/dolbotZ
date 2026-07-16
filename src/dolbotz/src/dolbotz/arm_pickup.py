@@ -23,7 +23,7 @@ class ArmPickupNode(Node):
 
     퍼블리시:
       /arm/target_point  (geometry_msgs/PointStamped)  — 카메라 프레임 XYZ
-      /arm/debug_image   (sensor_msgs/Image)            — 매 프레임 RGB (탐지 성공 시 바운딩박스 오버레이)
+      /arm/debug_image/compressed (sensor_msgs/CompressedImage) — 매 프레임 RGB (탐지 성공 시 바운딩박스 오버레이)
 
     파라미터:
       model_path         : YOLO .pt 경로 (필수)
@@ -82,7 +82,7 @@ class ArmPickupNode(Node):
         self.pub_point = self.create_publisher(
             PointStamped, '/arm/target_point', 10)
         self.pub_debug = self.create_publisher(
-            Image, '/arm/debug_image', 10)
+            CompressedImage, '/arm/debug_image/compressed', 10)
 
         self.get_logger().info(
             f'ArmPickupNode ready  |  target={self.target}  '
@@ -182,7 +182,7 @@ class ArmPickupNode(Node):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
         # 탐지 성공 여부와 무관하게 매 프레임 RGB를 그대로 퍼블리시
-        dbg = self.bridge.cv2_to_imgmsg(color, encoding='bgr8')
+        dbg = self.bridge.cv2_to_compressed_imgmsg(color, dst_format='jpg')
         dbg.header = color_msg.header
         self.pub_debug.publish(dbg)
 

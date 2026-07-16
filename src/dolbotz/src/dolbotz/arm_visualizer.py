@@ -2,7 +2,7 @@
 import cv2
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 from geometry_msgs.msg import PointStamped
 from cv_bridge import CvBridge
 
@@ -13,7 +13,7 @@ class ArmVisualizerNode(Node):
     def __init__(self):
         super().__init__('arm_visualizer_node')
 
-        self.declare_parameter('image_topic', '/arm/debug_image')
+        self.declare_parameter('image_topic', '/arm/debug_image/compressed')
         self.declare_parameter('point_topic', '/arm/target_point')
         self.declare_parameter('window_name', 'arm_debug')
         self.declare_parameter('point_stale_sec', 0.5)
@@ -28,7 +28,7 @@ class ArmVisualizerNode(Node):
         self._last_point = None
         self._last_point_stamp = None
 
-        self.create_subscription(Image, image_topic, self._on_image, 10)
+        self.create_subscription(CompressedImage, image_topic, self._on_image, 10)
         self.create_subscription(PointStamped, point_topic, self._on_point, 10)
 
         self.get_logger().info(
@@ -38,8 +38,8 @@ class ArmVisualizerNode(Node):
         self._last_point = msg.point
         self._last_point_stamp = self.get_clock().now()
 
-    def _on_image(self, msg: Image):
-        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+    def _on_image(self, msg: CompressedImage):
+        img = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
         if (self._last_point is not None and self._last_point_stamp is not None
                 and (self.get_clock().now() - self._last_point_stamp).nanoseconds
