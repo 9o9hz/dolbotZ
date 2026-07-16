@@ -21,6 +21,7 @@ class ManualTotalPositionNode(Node):
         # 관절 순서는 JOINTS 및 controller YAML과 동일해야 합니다 (rad/s, rad).
         # Operation rates (RMD: shoulder/elbow/wrist, Dynamixel: gripper/base).
         # Manual command rates: RMD 0.1 rad/s, Dynamixel 0.15 rad/s.
+        # Order: shoulder, elbow, wrist, gripper, base.
         self.declare_parameter('rates', [0.1, 0.1, 0.1, 0.15, 0.15])
         # Calibrated RMD joint limits; keep the Dynamixel gripper/base limits unchanged.
         self.declare_parameter('lower_limits', [-0.140, -0.436, 1.484, -2.3562, -3.1416])
