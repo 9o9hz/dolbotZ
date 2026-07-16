@@ -269,6 +269,11 @@ namespace rmd_hardware_interface {
       std::uint32_t actuator_id_;
       double torque_constant_;
       double max_velocity_;
+      double software_current_limit_;
+      double current_release_threshold_;
+      double current_retreat_velocity_;
+      double current_max_retreat_distance_;
+      std::chrono::milliseconds current_limit_duration_;
       std::chrono::milliseconds timeout_;
 
       // Buffers only used by the main thread
@@ -304,6 +309,15 @@ namespace rmd_hardware_interface {
       std::atomic<bool> position_interface_running_;
       std::atomic<bool> velocity_interface_running_;
       std::atomic<bool> effort_interface_running_;
+
+      // Position-mode current protection is owned by the asynchronous thread.
+      // It relaxes the position target instead of switching control modes.
+      bool current_limit_active_;
+      bool current_limit_latched_;
+      int blocked_motion_direction_;
+      std::chrono::milliseconds overcurrent_duration_;
+      double safe_position_command_;
+      double current_limit_start_position_;
   };
 
 }  // namespace rmd_hardware_interface

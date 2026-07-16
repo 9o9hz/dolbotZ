@@ -20,7 +20,7 @@
     </inertial>
   </xacro:macro>
 
-  <xacro:macro name="rmd_actuator" params="name joint_name actuator_id torque_constant">
+  <xacro:macro name="rmd_actuator" params="name joint_name actuator_id torque_constant current_limit current_release">
     <ros2_control name="${name}" type="actuator">
       <hardware>
         <plugin>rmd_hardware_interface/MyActuatorRmdHardwareInterface</plugin>
@@ -30,6 +30,11 @@
         <param name="max_velocity">$(arg max_velocity)</param>
         <param name="velocity_alpha">0.1</param>
         <param name="effort_alpha">0.1</param>
+        <param name="software_current_limit">${current_limit}</param>
+        <param name="current_release_threshold">${current_release}</param>
+        <param name="current_limit_duration_ms">50</param>
+        <param name="current_retreat_velocity">0.1</param>
+        <param name="current_max_retreat_distance">0.174533</param>
         <param name="timeout">$(arg timeout)</param>
       </hardware>
       <joint name="${joint_name}">
@@ -131,13 +136,16 @@
 
   <xacro:rmd_actuator name="shoulder_rmd" joint_name="shoulder_lift_joint"
                       actuator_id="$(arg shoulder_actuator_id)"
-                      torque_constant="$(arg shoulder_torque_constant)"/>
+                      torque_constant="$(arg shoulder_torque_constant)"
+                      current_limit="10.0" current_release="8.5"/>
   <xacro:rmd_actuator name="elbow_rmd" joint_name="elbow_joint"
                       actuator_id="$(arg elbow_actuator_id)"
-                      torque_constant="$(arg elbow_torque_constant)"/>
+                      torque_constant="$(arg elbow_torque_constant)"
+                      current_limit="8.0" current_release="6.8"/>
   <!-- wrist 하드웨어 세팅 전까지 CAN 액추에이터 등록을 비활성화합니다.
   <xacro:rmd_actuator name="wrist_rmd" joint_name="wrist_joint"
                       actuator_id="$(arg wrist_actuator_id)"
-                      torque_constant="$(arg wrist_torque_constant)"/>
+                      torque_constant="$(arg wrist_torque_constant)"
+                      current_limit="4.0" current_release="3.4"/>
   -->
 </robot>
