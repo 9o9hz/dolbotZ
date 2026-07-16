@@ -313,3 +313,9 @@ cansend can_drive 141#9A00000000000000
 ros2 launch rmd_x8_driver rmd_x8_driver.launch.py 
 ros2 launch robot_bringup manual_drive.launch.py
 
+
+
+dolbotZ 로봇팔
+ros2 run dolbotz arm_pickup
+ros2 run dolbotz arm_visualizer
+ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true
