@@ -1,10 +1,4 @@
-# dolbotz 실행 방법
 
-ROS2 (Humble) 패키지. 이 디렉터리(`/home/j/dolbotZ`) 자체가 워크스페이스 겸 패키지 루트입니다
-(`package.xml`이 루트에 있고, `colcon build`도 이 디렉터리에서 실행합니다).
-
-https://github.com/sw-works-log/manual100_combined.git
-https://github.com/harim-54/only_manual.git
 
 
 
@@ -137,25 +131,6 @@ ros2 run dolbotz gradient_map --ros-args \
 > (`src/dolbotz/gradient_map.py`의 `MAX_SLOPE_DEG_PLACEHOLDER` 참고).
 > `/terrain/elevation_map`을 게시하는 `elevation_map` 노드를 먼저(또는 함께) 띄워야 합니다.
 
-### arm_pickup (YOLO로 박스 탐지 → 3D 좌표 퍼블리시)
-
-```bash
-ros2 run dolbotz arm_pickup --ros-args \
-  -p target_class:=supply_box
-```
-
-구독: `/camera/camera/color/image_raw/compressed`,
-`/camera/camera/aligned_depth_to_color/image_raw/compressedDepth`,
-`/camera/camera/color/camera_info`
-
-카메라 이미지 입력은 RGB의 `compressed`와 Depth의 `compressedDepth`만 사용한다.
-프로젝트 노드가 raw 카메라 이미지 토픽을 구독하지 않으므로, 연산 노드가 원격
-컴퓨터에 있어도 비압축 카메라 프레임이 해당 노드로 전송되지 않는다.
-
-`model_path` 기본값은 `dolbotz.utils.paths.get_models_dir()` 기준
-`config/models/supplybest.pt`다 (flat_drive와 동일한 방식으로 cwd/사용자 홈
-경로 무관하게 해석됨). 다른 가중치를 쓰려면 `-p model_path:=/abs/path`로
-오버라이드하세요. `ultralytics`가 설치되어 있지 않으면 탐지 기능이 비활성화됩니다.
 
 ## 4. 테스트 실행
 
@@ -241,6 +216,9 @@ ros2 topic echo /motor_speed_cmd
 
 
 dolbotZ 로봇팔
+
+ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true
+
 ros2 run dolbotz arm_pickup
 ros2 run dolbotz arm_visualizer
-ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true
+
