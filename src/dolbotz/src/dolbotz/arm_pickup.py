@@ -76,7 +76,7 @@ class ArmPickupNode(Node):
         sub_depth = message_filters.Subscriber(
             self, Image, depth_topic, qos_profile=qos_profile_sensor_data)
         self._sync = message_filters.ApproximateTimeSynchronizer(
-            [sub_color, sub_depth], queue_size=5, slop=0.05)
+            [sub_color, sub_depth], queue_size=5, slop=0.3)
         self._sync.registerCallback(self._on_frames)
 
         self.pub_point = self.create_publisher(
