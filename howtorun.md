@@ -59,7 +59,8 @@ ros2 run dolbotz flat_drive --ros-args \
 `model_path`와 카메라 마운트 파라미터(`camera_height_m` 등)는 기본값이 있으므로
 위 예시에는 생략했다 — 아래 참고.
 
-구독: `/camera/camera/color/image_raw`, `.../camera_info`, `/camera/camera/imu`
+구독: `/camera/camera/color/image_raw/compressed`, `.../camera_info`,
+`/camera/camera/imu`
 발행: `/flatdrive/planned_path`(`nav_msgs/Path`, x=전방/y=좌측 m — 실제 출력),
 `/planning/target_point`, `/bev/image`, `/bev/mask`, `/bev/debug_overlay`,
 `/bev/centerline_overlay`, `/bev/H` (디버그용 중간 결과)
@@ -89,7 +90,8 @@ ros2 run dolbotz slope_decision --ros-args \
   -p track_width_m:=0.45
 ```
 
-구독: `/camera/camera/depth/camera_info`, `/camera/camera/depth/image_rect_raw`
+구독: `/camera/camera/depth/camera_info`,
+`/camera/camera/depth/image_rect_raw/compressedDepth`
 발행: `/terrain/side_slope_angle_deg`
 OpenCV 창(`SlopeVisualizer`)으로 깊이 ROI/기울기 값을 표시하므로 헤드리스 환경에서는 X 디스플레이 필요.
 
@@ -97,7 +99,7 @@ OpenCV 창(`SlopeVisualizer`)으로 깊이 ROI/기울기 값을 표시하므로 
 
 ```bash
 ros2 run dolbotz elevation_map --ros-args \
-  -p depth_topic:=/camera/camera/depth/image_rect_raw \
+  -p depth_topic:=/camera/camera/depth/image_rect_raw/compressedDepth \
   -p camera_info_topic:=/camera/camera/depth/camera_info \
   -p imu_topic:=/camera/camera/imu \
   -p resolution_m:=0.15 \
@@ -106,7 +108,8 @@ ros2 run dolbotz elevation_map --ros-args \
   -p blind_fill_forward_m:=0.6
 ```
 
-구독: `/camera/camera/depth/image_rect_raw`, `/camera/camera/depth/camera_info`, `/camera/camera/imu`
+구독: `/camera/camera/depth/image_rect_raw/compressedDepth`,
+`/camera/camera/depth/camera_info`, `/camera/camera/imu`
 발행: `/terrain/elevation_map` (32FC1, m 단위; NaN=미관측)
 
 > **주의 — min_depth_m/blind_fill_forward_m**: 실측 전 임시값입니다
@@ -140,6 +143,14 @@ ros2 run dolbotz gradient_map --ros-args \
 ros2 run dolbotz arm_pickup --ros-args \
   -p target_class:=supply_box
 ```
+
+구독: `/camera/camera/color/image_raw/compressed`,
+`/camera/camera/aligned_depth_to_color/image_raw/compressedDepth`,
+`/camera/camera/color/camera_info`
+
+카메라 이미지 입력은 RGB의 `compressed`와 Depth의 `compressedDepth`만 사용한다.
+프로젝트 노드가 raw 카메라 이미지 토픽을 구독하지 않으므로, 연산 노드가 원격
+컴퓨터에 있어도 비압축 카메라 프레임이 해당 노드로 전송되지 않는다.
 
 `model_path` 기본값은 `dolbotz.utils.paths.get_models_dir()` 기준
 `config/models/supplybest.pt`다 (flat_drive와 동일한 방식으로 cwd/사용자 홈

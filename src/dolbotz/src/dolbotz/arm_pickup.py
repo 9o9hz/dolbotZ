@@ -2,12 +2,13 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image, CompressedImage, CameraInfo
+from sensor_msgs.msg import CompressedImage, CameraInfo
 from geometry_msgs.msg import PointStamped
 from cv_bridge import CvBridge
 import message_filters
 
 from dolbotz.utils.paths import get_models_dir
+from dolbotz.utils.compressed_image import decode_compressed_depth
 
 try:
     from ultralytics import YOLO
@@ -33,7 +34,7 @@ class ArmPickupNode(Node):
       depth_roi_radius   : 깊이 샘플링 반경 픽셀 (기본 5)
       max_depth_m        : 유효 거리 상한 m (기본 2.0)
       color_topic        : 컬러 이미지 토픽 (sensor_msgs/CompressedImage, 젯슨↔원격 네트워크 대역폭 절약용)
-      depth_topic        : 컬러 정렬 뎁스 토픽 (aligned_depth_to_color, sensor_msgs/Image 그대로)
+      depth_topic        : 컬러 정렬 압축 뎁스 토픽 (aligned_depth_to_color/compressedDepth)
       camera_info_topic  : 컬러 카메라 info 토픽
     """
 
@@ -49,7 +50,8 @@ class ArmPickupNode(Node):
         self.declare_parameter(
             'color_topic', '/camera/camera/color/image_raw/compressed')
         self.declare_parameter(
-            'depth_topic', '/camera/camera/aligned_depth_to_color/image_raw')
+            'depth_topic',
+            '/camera/camera/aligned_depth_to_color/image_raw/compressedDepth')
         self.declare_parameter(
             'camera_info_topic', '/camera/camera/color/camera_info')
 
@@ -76,7 +78,7 @@ class ArmPickupNode(Node):
         sub_color = message_filters.Subscriber(
             self, CompressedImage, color_topic, qos_profile=qos_profile_sensor_data)
         sub_depth = message_filters.Subscriber(
-            self, Image, depth_topic, qos_profile=qos_profile_sensor_data)
+            self, CompressedImage, depth_topic, qos_profile=qos_profile_sensor_data)
         self._sync = message_filters.ApproximateTimeSynchronizer(
             [sub_color, sub_depth], queue_size=30, slop=0.20)
         self._sync.registerCallback(self._on_frames)
@@ -130,7 +132,7 @@ class ArmPickupNode(Node):
         valid = patch[(patch > 0.05) & (patch < self.max_d)]
         return float(np.median(valid)) if valid.size >= 3 else 0.0
 
-    def _on_frames(self, color_msg: CompressedImage, depth_msg: Image):
+    def _on_frames(self, color_msg: CompressedImage, depth_msg: CompressedImage):
         self._diag_frame_count += 1
         if self._diag_frame_count == 1:
             color_t = (
@@ -164,9 +166,16 @@ class ArmPickupNode(Node):
 
         import cv2
 
-        color = self.bridge.compressed_imgmsg_to_cv2(color_msg, desired_encoding='bgr8')
-        depth = self._to_meters(
-            self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding='passthrough'))
+        try:
+            color = self.bridge.compressed_imgmsg_to_cv2(
+                color_msg, desired_encoding='bgr8')
+            depth = self._to_meters(decode_compressed_depth(depth_msg))
+        except Exception as exc:
+            self.get_logger().error(
+                f'압축 카메라 이미지 디코딩 실패: {exc}',
+                throttle_duration_sec=5.0
+            )
+            return
 
         if self._diag_frame_count == 1:
             self.get_logger().warn('YOLO 추론 시작')

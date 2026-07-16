@@ -22,7 +22,8 @@ world-level에 도달한다 (elevation_map.py의 camera_body_to_level_matrix()�
 오프셋을 다시 빼지 않는다).
 
 구독 토픽:
-  /camera/camera/color/image_raw    sensor_msgs/Image        (bgr8)
+  /camera/camera/color/image_raw/compressed
+                                     sensor_msgs/CompressedImage (JPEG)
   /camera/camera/color/camera_info  sensor_msgs/CameraInfo   (fx,fy,cx,cy,왜곡계수)
   /camera/camera/imu                sensor_msgs/Imu          (원시 자이로 + 가속도만)
 
@@ -60,7 +61,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image, CameraInfo, Imu
+from sensor_msgs.msg import CompressedImage, Image, CameraInfo, Imu
 from geometry_msgs.msg import PointStamped, PoseStamped
 from nav_msgs.msg import Path
 from std_msgs.msg import Float64MultiArray
@@ -276,7 +277,8 @@ class FlatDriveNode(Node):
     def __init__(self):
         super().__init__('flat_drive_node')
 
-        self.declare_parameter('color_topic', '/camera/camera/color/image_raw')
+        self.declare_parameter(
+            'color_topic', '/camera/camera/color/image_raw/compressed')
         self.declare_parameter('camera_info_topic', '/camera/camera/color/camera_info')
         self.declare_parameter('imu_topic', '/camera/camera/imu')
 
@@ -344,7 +346,7 @@ class FlatDriveNode(Node):
         self._imu_sub = self.create_subscription(
             Imu, imu_topic, self._on_imu, qos)
         self._image_sub = self.create_subscription(
-            Image, color_topic, self._on_image, qos)
+            CompressedImage, color_topic, self._on_image, qos)
 
         self._path_pub = self.create_publisher(Path, '/flatdrive/planned_path', 10)
         self._target_pub = self.create_publisher(PointStamped, '/planning/target_point', 10)
@@ -447,7 +449,7 @@ class FlatDriveNode(Node):
 
     # ------------------------------------------------------------------
 
-    def _on_image(self, msg: Image) -> None:
+    def _on_image(self, msg: CompressedImage) -> None:
         if self._camera_matrix is None:
             self.get_logger().warn('CameraInfo 대기 중.', throttle_duration_sec=2.0)
             return
@@ -461,7 +463,8 @@ class FlatDriveNode(Node):
         t0 = time.perf_counter()
 
         try:
-            cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            cv_image = self._bridge.compressed_imgmsg_to_cv2(
+                msg, desired_encoding='bgr8')
         except CvBridgeError as exc:
             self.get_logger().error(f'CvBridge decode failed: {exc}')
             return
