@@ -298,3 +298,26 @@ ros2 daemon stop   # 노드 목록이 stale하게 남을 때만
   자율주행 명령 소스가 아예 없어서, AUTONOMOUS로 전환되면 조이스틱 입력이
   무시됩니다 (0.3초 후 안전상 속도 0 고정). 다시 SHARE를 누르면 복구됩니다.
 - can_drive 해제: `sudo ip link set can_drive down`
+
+
+
+
+로봇팔 depth cam 
+
+ros2 run realsense2_camera realsense2_camera_node --ros-args \
+
+  -p serial_no:="'339222071362'" \
+
+  -p enable_color:=true \
+
+  -p enable_depth:=true \
+
+  -p align_depth.enable:=true
+
+
+
+ros2 run dolbotz arm_pickup
+
+
+
+ros2 run dolbotz arm_visualizer
