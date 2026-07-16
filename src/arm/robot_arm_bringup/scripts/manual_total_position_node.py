@@ -20,19 +20,15 @@ class ManualTotalPositionNode(Node):
         self.declare_parameter('publish_rate', 20.0)
         # 관절 순서는 JOINTS 및 controller YAML과 동일해야 합니다 (rad/s, rad).
         # Operation rates (RMD: shoulder/elbow/wrist, Dynamixel: gripper/base).
-        # self.declare_parameter('rates', [0.17, 0.26, 0.35, 0.25, 0.25])
-        # Low-speed calibration/test rates. RMD: 0.03 rad/s (about 1.72 deg/s).
-        self.declare_parameter('rates', [0.03, 0.03, 0.03, 0.25, 0.25])
-        # Operation angle limits.
-        # self.declare_parameter('lower_limits', [0.0, -1.5708, -2.0944, -2.3562, -3.1416])
-        # self.declare_parameter('upper_limits', [2.0944, 0.3491, 2.0944, 2.3562, 3.1416])
-        # Calibration/test limits: widen only the three RMD joints to +/-720 deg;
-        # keep the Dynamixel gripper/base limits unchanged.
-        self.declare_parameter('lower_limits', [-12.5664, -12.5664, -12.5664, -2.3562, -3.1416])
-        self.declare_parameter('upper_limits', [12.5664, 12.5664, 12.5664, 2.3562, 3.1416])
+        # Manual command rates: RMD 0.1 rad/s, Dynamixel 0.15 rad/s.
+        self.declare_parameter('rates', [0.1, 0.1, 0.1, 0.15, 0.15])
+        # Calibrated RMD joint limits; keep the Dynamixel gripper/base limits unchanged.
+        self.declare_parameter('lower_limits', [-0.140, -0.436, 1.484, -2.3562, -3.1416])
+        self.declare_parameter('upper_limits', [1.361, 0.942, 4.259, 2.3562, 3.1416])
         self.declare_parameter('shoulder_axis', 3)
         self.declare_parameter('elbow_axis', 4)
-        self.declare_parameter('wrist_axis', 1)
+        # Linux Xbox-style /joy mapping: D-pad left/right is axis 6.
+        self.declare_parameter('wrist_axis', 6)
         self.declare_parameter('axis_threshold', 0.5)
         self.declare_parameter('gripper_positive_button', 1)
         self.declare_parameter('gripper_negative_button', 3)

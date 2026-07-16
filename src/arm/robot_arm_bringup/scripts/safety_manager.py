@@ -17,15 +17,17 @@ class SafetyManager(Node):
     def __init__(self):
         super().__init__('safety_manager')
         self.declare_parameter('control_toggle_button', 9)
-        # R1 in the standard PlayStation /joy mapping.
-        self.declare_parameter('manual_mode_button', 5)
-        self.declare_parameter('emergency_stop_button', 10)
+        # D-pad up in the Linux PlayStation /joy mapping.
+        self.declare_parameter('manual_mode_axis', 7)
+        # Disabled: button 10 is reserved for the drive emergency stop.
+        # self.declare_parameter('emergency_stop_button', 10)
         self.control_button = int(self.get_parameter('control_toggle_button').value)
-        self.manual_button = int(self.get_parameter('manual_mode_button').value)
-        self.estop_button = int(self.get_parameter('emergency_stop_button').value)
+        self.manual_axis = int(self.get_parameter('manual_mode_axis').value)
+        # self.estop_button = int(self.get_parameter('emergency_stop_button').value)
 
         self.mode = self.OFF
         self.last_buttons = []
+        self.last_axes = []
 
         latched_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -49,16 +51,25 @@ class SafetyManager(Node):
         previous = 0 <= index < len(self.last_buttons) and self.last_buttons[index] != 0
         return self.pressed(msg, index) and not previous
 
+    def axis_up_rising(self, msg, index):
+        current = 0 <= index < len(msg.axes) and msg.axes[index] > 0.5
+        previous = 0 <= index < len(self.last_axes) and self.last_axes[index] > 0.5
+        return current and not previous
+
     def on_joy(self, msg):
-        if self.mode != self.ESTOP_LATCHED and self.rising(msg, self.estop_button):
-            self.trigger_estop()
-        elif self.mode != self.ESTOP_LATCHED and self.rising(msg, self.control_button):
+        # Button 10 emergency-stop input is disabled to avoid consuming the
+        # drive emergency-stop button in the arm controller.
+        # if self.mode != self.ESTOP_LATCHED and self.rising(msg, self.estop_button):
+        #     self.trigger_estop()
+        if self.mode != self.ESTOP_LATCHED and self.rising(msg, self.control_button):
             self.mode = self.SEMIAUTO if self.mode == self.OFF else self.OFF
             self.publish_mode()
-        elif self.mode != self.ESTOP_LATCHED and self.mode != self.OFF and self.rising(msg, self.manual_button):
+        elif (self.mode != self.ESTOP_LATCHED and self.mode != self.OFF
+              and self.axis_up_rising(msg, self.manual_axis)):
             self.mode = self.MANUAL if self.mode == self.SEMIAUTO else self.SEMIAUTO
             self.publish_mode()
         self.last_buttons = list(msg.buttons)
+        self.last_axes = list(msg.axes)
 
     def publish_mode(self):
         enabled = self.mode in (self.SEMIAUTO, self.MANUAL)
