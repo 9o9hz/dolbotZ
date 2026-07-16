@@ -3,6 +3,10 @@
 ROS2 (Humble) 패키지. 이 디렉터리(`/home/j/dolbotZ`) 자체가 워크스페이스 겸 패키지 루트입니다
 (`package.xml`이 루트에 있고, `colcon build`도 이 디렉터리에서 실행합니다).
 
+https://github.com/sw-works-log/manual100_combined.git
+https://github.com/harim-54/only_manual.git
+
+
 
 ## 0. 사전 준비
 
@@ -18,15 +22,7 @@ source /opt/ros/humble/setup.bash
 - `flat_drive` 노드는 추가로 `ultralytics`, `openvino`(OpenVINO IR 세그멘테이션 모델 추론용) 필요
   — `pip install ultralytics openvino` — 없으면 해당 노드만 비활성 처리됨
 
-## 1. 빌드
 
-```bash
-cd /home/j/dolbotZ
-colcon build --symlink-install --packages-select dolbotz
-source install/setup.bash
-```
-
-`--symlink-install`을 쓰면 `src/dolbotz/*.py` 수정이 재빌드 없이 바로 반영됩니다.
 
 ## 2. 카메라 드라이버 실행
 
@@ -302,29 +298,18 @@ ros2 daemon stop   # 노드 목록이 stale하게 남을 때만
 
 
 
-로봇팔 depth cam
+구동부 메뉴얼
 
-```bash
-ros2 run realsense2_camera realsense2_camera_node --ros-args \
-  -p serial_no:="'339222071362'" \
-  -p enable_color:=true \
-  -p enable_depth:=true \
-  -p align_depth.enable:=true
-```
+# can 설정 (켜기)
+sudo ip link set can_drive down
+sudo ip link set can_drive type can bitrate 1000000
+sudo ip link set can_drive up
 
-> **주의**: `-p` 옵션 사이에 빈 줄을 넣으면 안 됩니다. bash의 `\` 줄이음이
-> 빈 줄에서 끊겨서 `align_depth.enable:=true`가 실제로 적용되지 않고,
-> `aligned_depth_to_color` 토픽이 발행되지 않는 원인이 됩니다. 위 코드블럭을
-> 그대로 복사하거나, 아래처럼 한 줄로 실행해도 됩니다.
+candump can_drive
+(응답확인)
+cansend can_drive 141#9A00000000000000
 
-```bash
-ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true
-```
 
-```bash
-ros2 run dolbotz arm_pickup
-```
+ros2 launch rmd_x8_driver rmd_x8_driver.launch.py 
+ros2 launch robot_bringup manual_drive.launch.py
 
-```bash
-ros2 run dolbotz arm_visualizer
-```
