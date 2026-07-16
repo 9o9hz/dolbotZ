@@ -78,7 +78,7 @@ class ArmPickupNode(Node):
         sub_depth = message_filters.Subscriber(
             self, Image, depth_topic, qos_profile=qos_profile_sensor_data)
         self._sync = message_filters.ApproximateTimeSynchronizer(
-            [sub_color, sub_depth], queue_size=5, slop=0.05)
+            [sub_color, sub_depth], queue_size=30, slop=0.20)
         self._sync.registerCallback(self._on_frames)
 
         self.pub_point = self.create_publisher(
@@ -135,11 +135,11 @@ class ArmPickupNode(Node):
         if self._diag_frame_count == 1:
             color_t = (
                 color_msg.header.stamp.sec
-                - color_msg.header.stamp.nanosec * 1e-9
+                + color_msg.header.stamp.nanosec * 1e-9
             )
             depth_t = (
                 depth_msg.header.stamp.sec
-                - depth_msg.header.stamp.nanosec * 1e-9
+                + depth_msg.header.stamp.nanosec * 1e-9
             )
             self.get_logger().warn(
                 f'SYNC CALLBACK 진입 | '
