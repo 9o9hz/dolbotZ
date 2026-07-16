@@ -4,11 +4,13 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, CameraInfo
 from geometry_msgs.msg import PointStamped
+from std_msgs.msg import Float32MultiArray
 from cv_bridge import CvBridge
 import message_filters
 
 from dolbotz.utils.paths import get_models_dir
 from dolbotz.utils.compressed_image import decode_compressed_depth
+from dolbotz.utils.detection import Detection2D, encode_detection
 
 try:
     from ultralytics import YOLO
@@ -23,8 +25,10 @@ class ArmPickupNode(Node):
     카메라 좌표계 3D 좌표(m)를 로봇팔 제어용으로 퍼블리시한다.
 
     퍼블리시:
-      /arm/target_point  (geometry_msgs/PointStamped)  — 카메라 프레임 XYZ
-      /arm/debug_image/compressed (sensor_msgs/CompressedImage) — 매 프레임 RGB (탐지 성공 시 바운딩박스 오버레이)
+      /arm/target_point  (geometry_msgs/PointStamped)     — 카메라 프레임 XYZ
+      /arm/detection     (std_msgs/Float32MultiArray)     — 픽셀 bbox/중심/confidence
+                                                              (탐지 성공 시에만, 필드 순서는
+                                                              dolbotz.utils.detection 참조)
 
     파라미터:
       model_path         : YOLO .pt 경로 (필수)
@@ -86,8 +90,8 @@ class ArmPickupNode(Node):
 
         self.pub_point = self.create_publisher(
             PointStamped, '/arm/target_point', 10)
-        self.pub_debug = self.create_publisher(
-            CompressedImage, '/arm/debug_image/compressed', 10)
+        self.pub_detection = self.create_publisher(
+            Float32MultiArray, '/arm/detection', 10)
 
         self.get_logger().info(
             f'ArmPickupNode ready  |  target={self.target}  '
@@ -165,8 +169,6 @@ class ArmPickupNode(Node):
             )
             return
 
-        import cv2
-
         try:
             color = self.bridge.compressed_imgmsg_to_cv2(
                 color_msg, desired_encoding='bgr8')
@@ -218,24 +220,14 @@ class ArmPickupNode(Node):
             pt.point.z = Z
             self.pub_point.publish(pt)
 
+            x1, y1, x2, y2 = bbox
+            self.pub_detection.publish(encode_detection(Detection2D(
+                x1=x1, y1=y1, x2=x2, y2=y2,
+                u=float(u), v=float(v), confidence=conf)))
+
             self.get_logger().info(
                 f'[{cls_name} conf={conf:.2f}]  '
                 f'X={X:.3f} Y={Y:.3f} Z={Z:.3f} m')
-
-            # 디버그 이미지 오버레이
-            bx1, by1, bx2, by2 = (int(c) for c in bbox)
-            cv2.rectangle(color, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
-            cv2.circle(color, (u, v), 6, (0, 0, 255), -1)
-            cv2.putText(
-                color,
-                f'{cls_name} {conf:.2f} | Z={Z:.2f}m',
-                (bx1, by1 - 8),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-        # 탐지 성공 여부와 무관하게 매 프레임 RGB를 그대로 퍼블리시
-        dbg = self.bridge.cv2_to_compressed_imgmsg(color, dst_format='jpg')
-        dbg.header = color_msg.header
-        self.pub_debug.publish(dbg)
 
 
 def main():
