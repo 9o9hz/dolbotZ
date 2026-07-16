@@ -67,6 +67,8 @@ class ArmPickupNode(Node):
 
         self.bridge = CvBridge()
         self.fx = self.fy = self.cx = self.cy = None
+        self._diag_frame_count = 0
+        self._camera_info_logged = False
 
         self.create_subscription(
             CameraInfo, info_topic, self._on_info, qos_profile_sensor_data)
@@ -105,6 +107,13 @@ class ArmPickupNode(Node):
     def _on_info(self, msg: CameraInfo):
         self.fx, self.fy = msg.k[0], msg.k[4]
         self.cx, self.cy = msg.k[2], msg.k[5]
+        if not self._camera_info_logged:
+            self.get_logger().warn(
+                f'CAMERA INFO 수신 | '
+                f'fx={self.fx}, fy={self.fy}, '
+                f'cx={self.cx}, cy={self.cy}'
+            )
+            self._camera_info_logged = True
 
     @staticmethod
     def _to_meters(cv_img: np.ndarray) -> np.ndarray:
@@ -122,7 +131,35 @@ class ArmPickupNode(Node):
         return float(np.median(valid)) if valid.size >= 3 else 0.0
 
     def _on_frames(self, color_msg: CompressedImage, depth_msg: Image):
-        if self.fx is None or self.model is None:
+        self._diag_frame_count += 1
+        if self._diag_frame_count == 1:
+            color_t = (
+                color_msg.header.stamp.sec
+                - color_msg.header.stamp.nanosec * 1e-9
+            )
+            depth_t = (
+                depth_msg.header.stamp.sec
+                - depth_msg.header.stamp.nanosec * 1e-9
+            )
+            self.get_logger().warn(
+                f'SYNC CALLBACK 진입 | '
+                f'dt={abs(color_t - depth_t):.6f}s | '
+                f'fx_none={self.fx is None} | '
+                f'model_none={self.model is None}'
+            )
+
+        if self.fx is None:
+            self.get_logger().error(
+                'fx가 None이어서 프레임 처리를 중단합니다.',
+                throttle_duration_sec=5.0
+            )
+            return
+
+        if self.model is None:
+            self.get_logger().error(
+                'YOLO model이 None이어서 프레임 처리를 중단합니다.',
+                throttle_duration_sec=5.0
+            )
             return
 
         import cv2
@@ -131,7 +168,11 @@ class ArmPickupNode(Node):
         depth = self._to_meters(
             self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding='passthrough'))
 
+        if self._diag_frame_count == 1:
+            self.get_logger().warn('YOLO 추론 시작')
         results = self.model(color, imgsz=self.infer_size, verbose=False)
+        if self._diag_frame_count == 1:
+            self.get_logger().warn('YOLO 추론 완료')
 
         best = None  # (conf, X, Y, Z, bbox, cls_name)
         for r in results:
