@@ -3,6 +3,10 @@
 ROS2 (Humble) 패키지. 이 디렉터리(`/home/j/dolbotZ`) 자체가 워크스페이스 겸 패키지 루트입니다
 (`package.xml`이 루트에 있고, `colcon build`도 이 디렉터리에서 실행합니다).
 
+https://github.com/sw-works-log/manual100_combined.git
+https://github.com/harim-54/only_manual.git
+
+
 
 ## 0. 사전 준비
 
@@ -18,15 +22,7 @@ source /opt/ros/humble/setup.bash
 - `flat_drive` 노드는 추가로 `ultralytics`, `openvino`(OpenVINO IR 세그멘테이션 모델 추론용) 필요
   — `pip install ultralytics openvino` — 없으면 해당 노드만 비활성 처리됨
 
-## 1. 빌드
 
-```bash
-cd /home/j/dolbotZ
-colcon build --symlink-install --packages-select dolbotz
-source install/setup.bash
-```
-
-`--symlink-install`을 쓰면 `src/dolbotz/*.py` 수정이 재빌드 없이 바로 반영됩니다.
 
 ## 2. 카메라 드라이버 실행
 
@@ -298,3 +294,28 @@ ros2 daemon stop   # 노드 목록이 stale하게 남을 때만
   자율주행 명령 소스가 아예 없어서, AUTONOMOUS로 전환되면 조이스틱 입력이
   무시됩니다 (0.3초 후 안전상 속도 0 고정). 다시 SHARE를 누르면 복구됩니다.
 - can_drive 해제: `sudo ip link set can_drive down`
+
+
+
+
+구동부 메뉴얼
+
+# can 설정 (켜기)
+sudo ip link set can_drive down
+sudo ip link set can_drive type can bitrate 1000000
+sudo ip link set can_drive up
+
+candump can_drive
+(응답확인)
+cansend can_drive 141#9A00000000000000
+
+
+ros2 launch rmd_x8_driver rmd_x8_driver.launch.py 
+ros2 launch robot_bringup manual_drive.launch.py
+
+
+
+dolbotZ 로봇팔
+ros2 run dolbotz arm_pickup
+ros2 run dolbotz arm_visualizer
+ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true
