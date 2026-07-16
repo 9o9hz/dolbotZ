@@ -1,10 +1,4 @@
-# dolbotz 실행 방법
 
-ROS2 (Humble) 패키지. 이 디렉터리(`/home/j/dolbotZ`) 자체가 워크스페이스 겸 패키지 루트입니다
-(`package.xml`이 루트에 있고, `colcon build`도 이 디렉터리에서 실행합니다).
-
-https://github.com/sw-works-log/manual100_combined.git
-https://github.com/harim-54/only_manual.git
 
 
 
@@ -59,7 +53,8 @@ ros2 run dolbotz flat_drive --ros-args \
 `model_path`와 카메라 마운트 파라미터(`camera_height_m` 등)는 기본값이 있으므로
 위 예시에는 생략했다 — 아래 참고.
 
-구독: `/camera/camera/color/image_raw`, `.../camera_info`, `/camera/camera/imu`
+구독: `/camera/camera/color/image_raw/compressed`, `.../camera_info`,
+`/camera/camera/imu`
 발행: `/flatdrive/planned_path`(`nav_msgs/Path`, x=전방/y=좌측 m — 실제 출력),
 `/planning/target_point`, `/bev/image`, `/bev/mask`, `/bev/debug_overlay`,
 `/bev/centerline_overlay`, `/bev/H` (디버그용 중간 결과)
@@ -89,7 +84,8 @@ ros2 run dolbotz slope_decision --ros-args \
   -p track_width_m:=0.45
 ```
 
-구독: `/camera/camera/depth/camera_info`, `/camera/camera/depth/image_rect_raw`
+구독: `/camera/camera/depth/camera_info`,
+`/camera/camera/depth/image_rect_raw/compressedDepth`
 발행: `/terrain/side_slope_angle_deg`
 OpenCV 창(`SlopeVisualizer`)으로 깊이 ROI/기울기 값을 표시하므로 헤드리스 환경에서는 X 디스플레이 필요.
 
@@ -97,7 +93,7 @@ OpenCV 창(`SlopeVisualizer`)으로 깊이 ROI/기울기 값을 표시하므로 
 
 ```bash
 ros2 run dolbotz elevation_map --ros-args \
-  -p depth_topic:=/camera/camera/depth/image_rect_raw \
+  -p depth_topic:=/camera/camera/depth/image_rect_raw/compressedDepth \
   -p camera_info_topic:=/camera/camera/depth/camera_info \
   -p imu_topic:=/camera/camera/imu \
   -p resolution_m:=0.15 \
@@ -106,7 +102,8 @@ ros2 run dolbotz elevation_map --ros-args \
   -p blind_fill_forward_m:=0.6
 ```
 
-구독: `/camera/camera/depth/image_rect_raw`, `/camera/camera/depth/camera_info`, `/camera/camera/imu`
+구독: `/camera/camera/depth/image_rect_raw/compressedDepth`,
+`/camera/camera/depth/camera_info`, `/camera/camera/imu`
 발행: `/terrain/elevation_map` (32FC1, m 단위; NaN=미관측)
 
 > **주의 — min_depth_m/blind_fill_forward_m**: 실측 전 임시값입니다
@@ -134,17 +131,6 @@ ros2 run dolbotz gradient_map --ros-args \
 > (`src/dolbotz/gradient_map.py`의 `MAX_SLOPE_DEG_PLACEHOLDER` 참고).
 > `/terrain/elevation_map`을 게시하는 `elevation_map` 노드를 먼저(또는 함께) 띄워야 합니다.
 
-### arm_pickup (YOLO로 박스 탐지 → 3D 좌표 퍼블리시)
-
-```bash
-ros2 run dolbotz arm_pickup --ros-args \
-  -p target_class:=supply_box
-```
-
-`model_path` 기본값은 `dolbotz.utils.paths.get_models_dir()` 기준
-`config/models/supplybest.pt`다 (flat_drive와 동일한 방식으로 cwd/사용자 홈
-경로 무관하게 해석됨). 다른 가중치를 쓰려면 `-p model_path:=/abs/path`로
-오버라이드하세요. `ultralytics`가 설치되어 있지 않으면 탐지 기능이 비활성화됩니다.
 
 ## 4. 테스트 실행
 
@@ -194,128 +180,59 @@ IMU 자세 추정 + 마운트 파라미터 공용 모듈입니다.
 - `config/calibration/` — 카메라별 실측 캘리브레이션 피클이 들어갈 자리
   (아직 생성 스크립트 없음). 스키마/네이밍은 `config/calibration/README.md` 참고.
 
-## 6. manual_ws 실행 가이드 (수동 주행 전용, can_drive)
-
-이 워크스페이스는 **조이스틱 수동 주행에 필요한 패키지만** 모아둔 순수 manual 전용
-워크스페이스입니다. 플리퍼(MD400T)와 Nav2 자율주행 스택(controller_server, EKF,
-robot_state_publisher 등)은 코드/설정/의존성까지 전부 빠져 있습니다.
-
-### 구성 패키지 (3개)
-
-- `rmd_x8_driver` — RMD-X8-120 구동모터 CAN 드라이버
-- `myahrs_driver` — IMU 드라이버
-- `robot_bringup` — `joy_mux_node`, `current_ramp_node`, `stability_monitor_node`
-  + `manual_drive.launch.py`
-
-### 구성 노드 (6개)
-
-`joy_node` → `joy_mux_node` → `current_ramp_node` → `rmd_x8_driver` +
-`myahrs_driver`(IMU) → `stability_monitor_node`
-
----
-
-### 6.1 빌드 - 터미널 1
-
-```bash
-source /opt/ros/humble/setup.bash
-cd ~/manual_ws
-rm -rf build install log
-colcon build --symlink-install
-source install/setup.bash
-```
-
-### 6.2 can_drive 연결 (USB-CAN 어댑터) - 터미널 2
-
-
-```bash
-ip link show can0                                        # 어댑터가 실제로 잡힌 이름 확인 (다르면 아래 can0를 그 이름으로 교체)
-sudo ip link set can0 down
-sudo ip link set can0 name can_drive                     # can_drive로 리네임
-sudo ip link set can_drive up type can bitrate 1000000   # 1Mbps로 업
-ip link show can_drive                                    # state UP 확인
-```
-
-### 6.3 실행 전 정리 (중복 노드 방지) - 터미널 3
-
-```bash
-source /opt/ros/humble/setup.bash
-source ~/manual_ws/install/setup.bash
-pkill -f "ros2 launch robot_bringup"
-pkill -f "joy_node"; pkill -f "joy_mux_node"
-pkill -f "current_ramp_node"; pkill -f "stability_monitor_node"
-pkill -f "rmd_x8_driver_node"; pkill -f "myahrs_driver_node"
-sleep 1
-ros2 node list   # 아무것도 안 나와야 정상
-```
-
-### 6.4 실행
-
-```bash
-ros2 launch robot_bringup manual_drive.launch.py
-```
-
-(`can_interface` 기본값이 이미 `can_drive`라 별도 인자 없이 그대로 실행하면 됩니다.)
-
-### 6.5 확인 - 터미널 4
-
-```bash
-source /opt/ros/humble/setup.bash
-ros2 node list     # 6개 노드 정상 기동 확인
-ros2 topic list    # /flipper_*, /cmd_vel_auto 등 자율주행/플리퍼 토픽 없어야 정상
-```
-
-### 6.6 구동 속도 프리셋 (조이스틱 L1/R1)
-
-- **R1**: 한 단계 가속 (40% → 70% → 100%, 정격 700dps 기준)
-- **L1**: 한 단계 감속
-- 기본값은 시작 시 자동으로 40%(280dps)로 설정됨
-- 확인/수동 조정:
-  ```bash
-  ros2 param get /rmd_x8_driver max_wheel_speed_dps
-  ros2 param set /rmd_x8_driver max_wheel_speed_dps 700.0   # 100% 강제 지정 시
-  ```
-
-### 6.7 종료
-
-```bash
-pkill -f "ros2 launch robot_bringup"
-ros2 daemon stop   # 노드 목록이 stale하게 남을 때만
-```
-
----
-
-### 안전 주의사항 (manual_ws)
-
-- **100% 프리셋(정격 700dps)은 안전장치 없이 즉시 전환됩니다.** 처음 가동 시
-  반드시 리프트 위에서 40%/70%부터 단계적으로 확인 후 100%를 시도하세요.
-- `/cmd_vel_safety` 경로(자세 임계각·과전류 비상 개입)는 `joy_mux_node`와
-  무관하게 항상 활성 상태입니다.
-- 조이스틱 SHARE 버튼(자율/수동 전환)은 **누르지 마세요.** 이 워크스페이스엔
-  자율주행 명령 소스가 아예 없어서, AUTONOMOUS로 전환되면 조이스틱 입력이
-  무시됩니다 (0.3초 후 안전상 속도 0 고정). 다시 SHARE를 누르면 복구됩니다.
-- can_drive 해제: `sudo ip link set can_drive down`
 
 
 
+# 로봇 수동 조종 실행 가이드
 
-구동부 메뉴얼
+## 사전 준비 (최초 1회 또는 재부팅 후 매번)
 
-# can 설정 (켜기)
-sudo ip link set can_drive down
+### CAN 인터페이스 활성화
 sudo ip link set can_drive type can bitrate 1000000
-sudo ip link set can_drive up
+sudo ip link set up can_drive
 
-candump can_drive
-(응답확인)
-cansend can_drive 141#9A00000000000000
+# 확인
+ip -details link show can_drive
+
+## 1. CAN 드라이버 (터미널 1)
+cd ~/manual2_ws
+source install/setup.bash
+ros2 run can_driver can_driver_node --ros-args -p can_channel:=can_drive
+
+## 2. 조이스틱 수동 조종 (터미널 2)
+cd ~/manual2_ws
+source install/setup.bash
+ros2 launch manual_joy_control manual_control.launch.py
+
+## 확인용 (선택)
+
+### 터미널 3 - 조이스틱 raw 입력 확인
+source ~/manual2_ws/install/setup.bash
+ros2 topic echo /joy
+
+### 터미널 4 - 최종 모터 속도 명령 확인
+source ~/manual2_ws/install/setup.bash
+ros2 topic echo /motor_speed_cmd
 
 
-ros2 launch rmd_x8_driver rmd_x8_driver.launch.py 
-ros2 launch robot_bringup manual_drive.launch.py
 
 
 
-dolbotZ 로봇팔
+# 로봇팔 D435I — arm_pickup 전용
+ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true -p enable_infra1:=false -p enable_infra2:=false -p enable_gyro:=false -p enable_accel:=false
+
 ros2 run dolbotz arm_pickup
 ros2 run dolbotz arm_visualizer
-ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true
+
+# 로봇팔 rosbag
+ros2 bag record -o arm_pickup_bag \
+  /camera/camera/color/image_raw/compressed \
+  /camera/camera/color/camera_info \
+  /camera/camera/aligned_depth_to_color/image_raw/compressedDepth \
+  /camera/camera/aligned_depth_to_color/camera_info
+
+ros2 bag record -o arm_pickup_bag -a
+
+
+# 주행 D455
+ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'117222251401'" -p enable_color:=true -p enable_depth:=true -p enable_gyro:=true -p enable_accel:=true -p unite_imu_method:=2 -p enable_infra1:=false -p enable_infra2:=false

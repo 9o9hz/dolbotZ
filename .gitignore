@@ -28,3 +28,6 @@ yolo26n-seg.pt
 .env
 *.key
 secrets/
+build/
+install/
+log/

@@ -30,7 +30,8 @@ row 0 = 최대 y = 로봇 왼쪽).
     정리되었다.
 
 구독 토픽:
-  /camera/camera/depth/image_rect_raw   sensor_msgs/Image        (16UC1 mm 또는 32FC1 m)
+  /camera/camera/depth/image_rect_raw/compressedDepth
+                                           sensor_msgs/CompressedImage (16UC1/32FC1)
   /camera/camera/depth/camera_info      sensor_msgs/CameraInfo   (fx, fy, cx, cy)
   /camera/camera/imu                    sensor_msgs/Imu          (원시 자이로 + 가속도만)
 
@@ -65,7 +66,7 @@ from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from scipy.spatial.transform import Rotation
-from sensor_msgs.msg import CameraInfo, Image, Imu
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image, Imu
 
 from dolbotz.utils.attitude import (
     R_BODY_TO_OPTICAL,
@@ -75,6 +76,7 @@ from dolbotz.utils.attitude import (
     roll_pitch_from_accel_body,
     update_complementary_filter,
 )
+from dolbotz.utils.compressed_image import decode_compressed_depth
 
 # ---------------------------------------------------------------------------
 # 고정 임계값 상수
@@ -263,7 +265,8 @@ class ElevationMapNode(Node):
     def __init__(self):
         super().__init__('elevation_map_node')
 
-        self.declare_parameter('depth_topic', '/camera/camera/depth/image_rect_raw')
+        self.declare_parameter(
+            'depth_topic', '/camera/camera/depth/image_rect_raw/compressedDepth')
         self.declare_parameter('camera_info_topic', '/camera/camera/depth/camera_info')
         self.declare_parameter('imu_topic', '/camera/camera/imu')
 
@@ -320,7 +323,7 @@ class ElevationMapNode(Node):
         self._imu_sub = self.create_subscription(
             Imu, imu_topic, self._on_imu, qos)
         self._depth_sub = self.create_subscription(
-            Image, depth_topic, self._on_depth, qos)
+            CompressedImage, depth_topic, self._on_depth, qos)
 
         self._elevation_pub = self.create_publisher(Image, '/terrain/elevation_map', 10)
 
@@ -346,7 +349,7 @@ class ElevationMapNode(Node):
             self._roll_est, self._pitch_est, gyro_body, accel_body, dt, alpha=self._alpha)
         self._last_imu_stamp = stamp
 
-    def _on_depth(self, msg: Image) -> None:
+    def _on_depth(self, msg: CompressedImage) -> None:
         if self._fx is None:
             self.get_logger().warn(
                 'CameraInfo not received yet; skipping frame.', throttle_duration_sec=2.0)
@@ -360,9 +363,9 @@ class ElevationMapNode(Node):
         t0 = time.perf_counter()
 
         try:
-            cv_img = self._bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+            cv_img = decode_compressed_depth(msg)
         except Exception as exc:
-            self.get_logger().error(f'CvBridge decode failed: {exc}')
+            self.get_logger().error(f'compressedDepth decode failed: {exc}')
             return
         depth_m = depth_to_meters(np.asarray(cv_img))
 
