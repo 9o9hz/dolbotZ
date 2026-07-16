@@ -41,7 +41,8 @@ class ArmPickupNode(Node):
     def __init__(self):
         super().__init__('arm_pickup_node')
 
-        self.declare_parameter('model_path', str(get_models_dir() / 'supplybest.pt'))
+        self.declare_parameter(
+            'model_path', str(get_models_dir() / 'supplybest_openvino_model'))
         self.declare_parameter('target_class', 'supplybox')
         self.declare_parameter('conf_threshold', 0.5)
         self.declare_parameter('infer_size', 320)
