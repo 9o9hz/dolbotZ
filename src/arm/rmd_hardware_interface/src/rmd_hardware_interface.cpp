@@ -1,6 +1,7 @@
 #include "rmd_hardware_interface/rmd_hardware_interface.hpp"
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -69,6 +70,45 @@ namespace rmd_hardware_interface {
       max_velocity_ = 720.0;
       RCLCPP_INFO(getLogger(), "Max velocity not set, defaulting to '%f'.", max_velocity_);
     }
+    auto const parse_positive_double = [this](char const* name, double& value) {
+      auto const parameter = info_.hardware_parameters.find(name);
+      if (parameter == info_.hardware_parameters.end()) {
+        RCLCPP_FATAL(getLogger(), "Required hardware parameter '%s' is missing.", name);
+        return false;
+      }
+      value = std::stod(parameter->second);
+      if (!std::isfinite(value) || value <= 0.0) {
+        RCLCPP_FATAL(getLogger(), "Hardware parameter '%s' must be finite and positive.", name);
+        return false;
+      }
+      return true;
+    };
+    if (!parse_positive_double("software_current_limit", software_current_limit_) ||
+        !parse_positive_double("current_release_threshold", current_release_threshold_) ||
+        !parse_positive_double("current_retreat_velocity", current_retreat_velocity_) ||
+        !parse_positive_double("current_max_retreat_distance", current_max_retreat_distance_)) {
+      return CallbackReturn::ERROR;
+    }
+    if (current_release_threshold_ >= software_current_limit_) {
+      RCLCPP_FATAL(getLogger(),
+        "Current release threshold %.3f A must be below software current limit %.3f A.",
+        current_release_threshold_, software_current_limit_);
+      return CallbackReturn::ERROR;
+    }
+    auto const duration_parameter = info_.hardware_parameters.find("current_limit_duration_ms");
+    if (duration_parameter == info_.hardware_parameters.end()) {
+      RCLCPP_FATAL(getLogger(), "Required hardware parameter 'current_limit_duration_ms' is missing.");
+      return CallbackReturn::ERROR;
+    }
+    current_limit_duration_ = std::chrono::milliseconds(std::stol(duration_parameter->second));
+    if (current_limit_duration_.count() <= 0) {
+      RCLCPP_FATAL(getLogger(), "Hardware parameter 'current_limit_duration_ms' must be positive.");
+      return CallbackReturn::ERROR;
+    }
+    RCLCPP_INFO(getLogger(),
+      "Position current protection: limit %.3f A, release %.3f A, trigger %ld ms, retreat %.3f rad/s.",
+      software_current_limit_, current_release_threshold_, current_limit_duration_.count(),
+      current_retreat_velocity_);
     if (info_.hardware_parameters.find("velocity_alpha") != info_.hardware_parameters.end()) {
       auto const velocity_alpha {std::stod(info_.hardware_parameters["velocity_alpha"])};
       velocity_low_pass_filter_ = std::make_unique<LowPassFilter>(velocity_alpha);
@@ -180,6 +220,12 @@ namespace rmd_hardware_interface {
     position_interface_running_.store(false);
     velocity_interface_running_.store(false);
     effort_interface_running_.store(false);
+    current_limit_active_ = false;
+    current_limit_latched_ = false;
+    blocked_motion_direction_ = 0;
+    overcurrent_duration_ = std::chrono::milliseconds(0);
+    safe_position_command_ = std::numeric_limits<double>::quiet_NaN();
+    current_limit_start_position_ = std::numeric_limits<double>::quiet_NaN();
 
     if (info_.joints.size() != 1) {
       RCLCPP_FATAL(getLogger(), "Expected a single joint but got %zu joints.", info_.joints.size());
@@ -337,6 +383,11 @@ namespace rmd_hardware_interface {
         // Publish both buffers before exposing the running flag to the async thread.
         position_command_ = measured_position;
         async_position_command_.store(measured_position);
+        safe_position_command_ = measured_position;
+        current_limit_active_ = false;
+        current_limit_latched_ = false;
+        blocked_motion_direction_ = 0;
+        overcurrent_duration_ = std::chrono::milliseconds(0);
         position_command_valid_.store(true);
         position_interface_running_.store(true);
         RCLCPP_INFO(getLogger(),
@@ -389,9 +440,71 @@ namespace rmd_hardware_interface {
       auto const now {std::chrono::steady_clock::now()};
       auto const wakeup_time {now + cycle_time};
       if (position_interface_running_ && position_command_valid_.load()) {
-        double const command {async_position_command_.load()};
-        if (std::isfinite(command)) {
-          feedback_ = actuator_interface_->sendPositionAbsoluteSetpoint(radToDeg(command), max_velocity_);
+        double const requested_command {async_position_command_.load()};
+        if (std::isfinite(requested_command)) {
+          double const measured_position {async_position_state_.load()};
+          double const measured_current {std::abs(feedback_.current)};
+          double const position_error {requested_command - measured_position};
+          int const requested_direction {(position_error > 0.0) - (position_error < 0.0)};
+
+          if (!std::isfinite(safe_position_command_)) {
+            safe_position_command_ = measured_position;
+          }
+
+          // A command away from the collision is always allowed and clears the latch.
+          if ((current_limit_active_ || current_limit_latched_) && blocked_motion_direction_ != 0 &&
+              requested_direction != 0 && requested_direction != blocked_motion_direction_) {
+            current_limit_active_ = false;
+            current_limit_latched_ = false;
+            blocked_motion_direction_ = 0;
+            overcurrent_duration_ = std::chrono::milliseconds(0);
+            safe_position_command_ = requested_command;
+            RCLCPP_INFO(getLogger(), "Current protection released by reverse position command.");
+          }
+
+          if (!current_limit_active_ && !current_limit_latched_) {
+            safe_position_command_ = requested_command;
+            if (std::isfinite(measured_current) && measured_current >= software_current_limit_ &&
+                requested_direction != 0) {
+              overcurrent_duration_ += cycle_time;
+              if (overcurrent_duration_ >= current_limit_duration_) {
+                current_limit_active_ = true;
+                blocked_motion_direction_ = requested_direction;
+                safe_position_command_ = measured_position;
+                current_limit_start_position_ = measured_position;
+                RCLCPP_WARN(getLogger(),
+                  "Software current limit active: measured %.3f A >= %.3f A; relaxing position target.",
+                  measured_current, software_current_limit_);
+              }
+            } else {
+              overcurrent_duration_ = std::chrono::milliseconds(0);
+            }
+          }
+
+          if (current_limit_active_) {
+            double const retreat_step {
+              current_retreat_velocity_ * static_cast<double>(cycle_time.count()) / 1000.0};
+            double const retreat_limit {
+              current_limit_start_position_ -
+              static_cast<double>(blocked_motion_direction_) * current_max_retreat_distance_};
+            safe_position_command_ -= static_cast<double>(blocked_motion_direction_) * retreat_step;
+            if (blocked_motion_direction_ > 0) {
+              safe_position_command_ = std::max(safe_position_command_, retreat_limit);
+            } else {
+              safe_position_command_ = std::min(safe_position_command_, retreat_limit);
+            }
+
+            if (std::isfinite(measured_current) && measured_current <= current_release_threshold_) {
+              current_limit_active_ = false;
+              current_limit_latched_ = true;
+              RCLCPP_WARN(getLogger(),
+                "Software current limit latched at relaxed target %.6f rad (current %.3f A).",
+                safe_position_command_, measured_current);
+            }
+          }
+
+          feedback_ = actuator_interface_->sendPositionAbsoluteSetpoint(
+            radToDeg(safe_position_command_), max_velocity_);
         } else {
           position_command_valid_.store(false);
           RCLCPP_ERROR(getLogger(), "Blocked non-finite asynchronous position command.");
