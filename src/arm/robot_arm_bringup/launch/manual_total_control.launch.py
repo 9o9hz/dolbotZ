@@ -14,21 +14,19 @@ def generate_launch_description():
         DeclareLaunchArgument('elbow_actuator_id', default_value='5'),
         DeclareLaunchArgument('wrist_actuator_id', default_value='6'),
         # Per-joint RMD operation limits in degrees per second.
-        # DeclareLaunchArgument('shoulder_max_velocity', default_value='15.0'),
-        # DeclareLaunchArgument('elbow_max_velocity', default_value='20.0'),
-        # DeclareLaunchArgument('wrist_max_velocity', default_value='30.0'),
-        # Low-speed calibration/test limits.
-        DeclareLaunchArgument('shoulder_max_velocity', default_value='5.0'),
+        DeclareLaunchArgument('shoulder_max_velocity', default_value='15.0'),
         DeclareLaunchArgument('elbow_max_velocity', default_value='5.0'),
-        DeclareLaunchArgument('wrist_max_velocity', default_value='5.0'),
+        DeclareLaunchArgument('wrist_max_velocity', default_value='30.0'),
         DeclareLaunchArgument('timeout', default_value='0'),
         DeclareLaunchArgument('dxl_port_name', default_value='/dev/ttyUSB0'),
         DeclareLaunchArgument('dxl_baud_rate', default_value='1000000'),
         DeclareLaunchArgument('joy_dev', default_value='/dev/input/js0'),
         DeclareLaunchArgument('control_toggle_button', default_value='9'),
-        DeclareLaunchArgument('manual_mode_button', default_value='5'),
-        DeclareLaunchArgument('emergency_stop_button', default_value='10'),
-        DeclareLaunchArgument('wrist_axis', default_value='1'),
+        DeclareLaunchArgument('manual_mode_axis', default_value='7'),
+        # Disabled: button 10 is reserved for the drive emergency stop.
+        # DeclareLaunchArgument('emergency_stop_button', default_value='10'),
+        # Linux Xbox-style /joy mapping: D-pad left/right is axis 6.
+        DeclareLaunchArgument('wrist_axis', default_value='6'),
         DeclareLaunchArgument(
             'rmd_hardware_components',
             default_value="['shoulder_rmd', 'elbow_rmd', 'wrist_rmd']"),
@@ -65,8 +63,9 @@ def generate_launch_description():
         Node(package='robot_arm_bringup', executable='safety_manager.py',
              name='safety_manager', output='screen', parameters=[{
                  'control_toggle_button': LaunchConfiguration('control_toggle_button'),
-                 'manual_mode_button': LaunchConfiguration('manual_mode_button'),
-                 'emergency_stop_button': LaunchConfiguration('emergency_stop_button')}]),
+                 'manual_mode_axis': LaunchConfiguration('manual_mode_axis'),
+                 # 'emergency_stop_button': LaunchConfiguration('emergency_stop_button'),
+             }]),
         Node(package='robot_arm_bringup', executable='gamepad_position_controller.py',
              name='gamepad_position_controller', output='screen', parameters=[{
                  'wrist_axis': LaunchConfiguration('wrist_axis')}]),

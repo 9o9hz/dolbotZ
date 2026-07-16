@@ -4,9 +4,10 @@ import cv2
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import CompressedImage, CameraInfo
 from std_msgs.msg import Float32
-from cv_bridge import CvBridge
+
+from dolbotz.utils.compressed_image import decode_compressed_depth
 
 
 class _DepthRoiWindow:
@@ -46,7 +47,9 @@ class SideSlopeTriggerNode(Node):
         self.declare_parameter('sample_step', 8)
         self.declare_parameter('max_depth_m', 3.0)
         self.declare_parameter('depth_info_topic', '/camera/camera/depth/camera_info')
-        self.declare_parameter('depth_image_topic', '/camera/camera/depth/image_rect_raw')
+        self.declare_parameter(
+            'depth_image_topic',
+            '/camera/camera/depth/image_rect_raw/compressedDepth')
 
         # 로봇의 좌우 기준 거리(트레드 폭 등) — 중요!
         self.declare_parameter('track_width_m', 0.45)  # 예시: 45cm
@@ -59,7 +62,6 @@ class SideSlopeTriggerNode(Node):
         self.depth_image_topic = str(self.get_parameter('depth_image_topic').value)
         self.track_w = float(self.get_parameter('track_width_m').value)
 
-        self.bridge = CvBridge()
         self.fx = self.fy = self.cx = self.cy = None
         self.vis = _DepthRoiWindow('slope_decision')
 
@@ -67,7 +69,8 @@ class SideSlopeTriggerNode(Node):
             CameraInfo, self.depth_info_topic, self.on_info, qos_profile_sensor_data
         )
         self.sub_depth = self.create_subscription(
-            Image, self.depth_image_topic, self.on_depth, qos_profile_sensor_data
+            CompressedImage, self.depth_image_topic, self.on_depth,
+            qos_profile_sensor_data
         )
         self.pub_slope = self.create_publisher(Float32, '/terrain/side_slope_angle_deg', 10)
 
@@ -83,11 +86,18 @@ class SideSlopeTriggerNode(Node):
             return cv_img.astype(np.float32) * 0.001
         return cv_img.astype(np.float32)
 
-    def on_depth(self, msg: Image):
+    def on_depth(self, msg: CompressedImage):
         if self.fx is None:
             return
 
-        cv_img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+        try:
+            cv_img = decode_compressed_depth(msg)
+        except Exception as exc:
+            self.get_logger().error(
+                f'compressedDepth decode failed: {exc}',
+                throttle_duration_sec=5.0
+            )
+            return
         depth = self._depth_to_meters(cv_img)
 
         h, w = depth.shape[:2]

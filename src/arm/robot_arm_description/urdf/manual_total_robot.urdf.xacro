@@ -6,13 +6,9 @@
   <xacro:arg name="wrist_actuator_id" default="6"/>
   <xacro:arg name="timeout" default="0"/>
   <!-- Per-joint RMD operation limits in degrees per second. -->
-  <!-- <xacro:arg name="shoulder_max_velocity" default="15.0"/> -->
-  <!-- <xacro:arg name="elbow_max_velocity" default="20.0"/> -->
-  <!-- <xacro:arg name="wrist_max_velocity" default="30.0"/> -->
-  <!-- Low-speed calibration/test limits. -->
-  <xacro:arg name="shoulder_max_velocity" default="5.0"/>
+  <xacro:arg name="shoulder_max_velocity" default="15.0"/>
   <xacro:arg name="elbow_max_velocity" default="5.0"/>
-  <xacro:arg name="wrist_max_velocity" default="5.0"/>
+  <xacro:arg name="wrist_max_velocity" default="30.0"/>
   <xacro:arg name="dxl_port_name" default="/dev/ttyUSB0"/>
   <xacro:arg name="dxl_baud_rate" default="1000000"/>
 
