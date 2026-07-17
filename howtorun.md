@@ -1,38 +1,5 @@
 
 
-
-
-## 0. 사전 준비
-
-```bash
-source /opt/ros/humble/setup.bash
-```
-
-필요 의존성 (`package.xml` 기준):
-- rclpy, sensor_msgs, std_msgs, nav_msgs, geometry_msgs, visualization_msgs, cv_bridge, image_transport
-- python3-numpy, python3-opencv, python3-scipy
-- RealSense 카메라 사용 시 `realsense2_camera` 패키지 (`ros2 pkg list | grep realsense`로 설치 확인)
-- `arm_pickup` 노드는 추가로 `ultralytics`(YOLO), `message_filters` 필요 — 없으면 해당 노드만 비활성 처리됨
-- `flat_drive` 노드는 추가로 `ultralytics`, `openvino`(OpenVINO IR 세그멘테이션 모델 추론용) 필요
-  — `pip install ultralytics openvino` — 없으면 해당 노드만 비활성 처리됨
-
-
-
-## 2. 카메라 드라이버 실행
-
-각 노드가 구독하는 토픽에 맞게 필요한 스트림만 켜서 실행합니다.
-
-```bash
-# 컬러만 필요할 때 (flat_drive)
-ros2 run realsense2_camera realsense2_camera_node --ros-args \
-  -p enable_color:=true -p enable_depth:=false \
-  -p rgb_camera.profile:=640x480x30
-
-# 뎁스만 필요할 때 (slope_decision)
-ros2 run realsense2_camera realsense2_camera_node --ros-args \
-  -p enable_color:=false -p enable_depth:=true
-```
-
 ## 3. 노드 실행
 
 ### flat_drive (평지 주행가능영역 추종 — 세그멘테이션 → BEV투영 → centerline 경로 발행)
@@ -183,59 +150,41 @@ IMU 자세 추정 + 마운트 파라미터 공용 모듈입니다.
 
 
 
-# 로봇 수동 조종 실행 가이드
 
-`can_driver`/`manual_joy_control`은 별도 워크스페이스가 아니라 `dolbotz`/`arm`과
-같은 워크스페이스(`/home/j/dolbotZ`) 소속이다. `cd`로 다른 디렉터리로 이동할
-필요 없이, 새 터미널을 열 때마다 아래 두 줄만 소스하면 어디서 실행하든 동작한다
-(코드를 안 고쳤다면 `colcon build`도 다시 할 필요 없음).
 
-```bash
-source /opt/ros/humble/setup.bash
-source /home/j/dolbotZ/install/setup.bash
-```
 
-## 사전 준비 (최초 1회 또는 재부팅 후 매번)
 
-### CAN 인터페이스 활성화
-```bash
+# 메뉴얼 주행
+
+### CAN_drive 인터페이스 활성화
 sudo ip link set can_drive type can bitrate 1000000
 sudo ip link set up can_drive
-
-# 확인
 ip -details link show can_drive
-
-**가장 중요한 포인트**
-```bash
-cansend can_drive 141#7600000000000000 -> 보호상태 해제 명령
-cansend can_drive 141#9C00000000000000 -> 모터 상태 확인 명령
-```
-
-## 1. CAN 드라이버 (터미널 1)
-```bash
+#
+source install/setup.bash
 ros2 run can_driver can_driver_node --ros-args -p can_channel:=can_drive
-```
-
-## 2. 조이스틱 수동 조종 (터미널 2)
-```bash
+#
+source install/setup.bash
 ros2 launch manual_joy_control manual_control.launch.py
-```
 
 ## 확인용 (선택)
 
 ### 터미널 3 - 조이스틱 raw 입력 확인
-```bash
-ros2 topic echo /joy
-```
+source ~/dolbotZ/install/setup.bash
+ 
 
 ### 터미널 4 - 최종 모터 속도 명령 확인
-```bash
+source ~/dolbotZ/install/setup.bash
 ros2 topic echo /motor_speed_cmd
-```
 
 
 
-
+### CAN 인터페이스 활성화 can_arm
+sudo ip link set can_arm type can bitrate 1000000
+sudo ip link set up can_arm
+ip -details link show can_arm
+#
+ros2 launch robot_arm_bringup robot_arm_bringup.launch.py 
 
 # 로봇팔 D435I — arm_pickup 전용
 ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true -p enable_infra1:=false -p enable_infra2:=false -p enable_gyro:=false -p enable_accel:=false
