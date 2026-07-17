@@ -1,6 +1,7 @@
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
@@ -20,6 +21,10 @@ def generate_launch_description():
         DeclareLaunchArgument('timeout', default_value='0'),
         DeclareLaunchArgument('dxl_port_name', default_value='/dev/ttyUSB0'),
         DeclareLaunchArgument('dxl_baud_rate', default_value='1000000'),
+        DeclareLaunchArgument(
+            'launch_joy',
+            default_value='true',
+            description='Launch joy_node from the arm bringup'),
         DeclareLaunchArgument('joy_dev', default_value='/dev/input/js0'),
         DeclareLaunchArgument('control_toggle_button', default_value='9'),
         DeclareLaunchArgument('manual_mode_axis', default_value='7'),
@@ -59,7 +64,8 @@ def generate_launch_description():
              parameters=[robot_description], output='screen'),
         control, state_spawner, spawn_in_order,
         Node(package='joy', executable='joy_node', name='joy_node',
-             parameters=[{'dev': LaunchConfiguration('joy_dev'), 'deadzone': 0.08}]),
+             parameters=[{'dev': LaunchConfiguration('joy_dev'), 'deadzone': 0.08}],
+             condition=IfCondition(LaunchConfiguration('launch_joy'))),
         Node(package='robot_arm_bringup', executable='safety_manager.py',
              name='safety_manager', output='screen', parameters=[{
                  'control_toggle_button': LaunchConfiguration('control_toggle_button'),
