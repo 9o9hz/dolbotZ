@@ -19,6 +19,10 @@ class ManualJoyControlNode(Node):
         self.declare_parameter('min_speed_dps', 0.0)
         self.declare_parameter('max_speed_dps', 800.0)
         self.declare_parameter('stick_deadzone', 0.05)
+        # [CHANGED] turn 스틱 민감도 게인. 값을 올릴수록 적은 turn 입력으로도 큰 회전 차동이 걸림
+        self.declare_parameter('turn_gain', 1.5)
+        # [CHANGED] 거의 순수 좌우 입력일 때 fwd 누출을 0으로 스냅하기 위한 비율
+        self.declare_parameter('axis_snap_ratio', 0.2)
 
         self.declare_parameter('left_motor_sign', 1.0)
         self.declare_parameter('right_motor_sign', -1.0)
@@ -37,6 +41,10 @@ class ManualJoyControlNode(Node):
         self.min_speed = p('min_speed_dps').value
         self.max_speed = p('max_speed_dps').value
         self.deadzone = p('stick_deadzone').value
+        # [CHANGED] turn_gain 파라미터 로드
+        self.turn_gain = p('turn_gain').value
+        # [CHANGED] axis_snap_ratio 파라미터 로드
+        self.axis_snap_ratio = p('axis_snap_ratio').value
 
         self.left_sign = p('left_motor_sign').value
         self.right_sign = p('right_motor_sign').value
@@ -83,23 +91,22 @@ class ManualJoyControlNode(Node):
         if abs(turn) < self.deadzone:
             turn = 0.0
 
-        # ---- 3구간 discrete 조향 로직 ----
-        if turn == 0.0:
-            # 순수 전진/후진: 좌우 동일 ratio (최종 부호는 left_sign/right_sign가 갈라줌)
-            left_ratio = fwd
-            right_ratio = fwd
-        elif fwd == 0.0:
-            # 순수 좌우 -> 제자리 회전: 우측 ratio 부호를 반전시켜서 최종 부호가 같아지게
-            left_ratio = turn
-            right_ratio = -turn
-        else:
-            # 대각선 입력 -> 한쪽 바퀴만 살리고 반대쪽은 0 (피벗 회전)
-            if turn > 0:
-                left_ratio = fwd
-                right_ratio = 0.0
-            else:
-                left_ratio = 0.0
-                right_ratio = fwd
+        # [CHANGED] 거의 순수 좌우 입력(turn이 fwd보다 훨씬 큼)이면 fwd 누출을 0으로 스냅해
+        # 스틱 조작이 완벽히 수평이 아니어도 확실한 제자리 회전이 되도록 함
+        if turn != 0.0 and abs(fwd) < self.axis_snap_ratio * abs(turn):
+            fwd = 0.0
+
+        # [CHANGED] 3구간 discrete 조향 로직 -> arcade mixing으로 교체.
+        # 기존 로직은 turn!=0이면 fwd 크기만으로 한쪽 바퀴를 죽이는 방식이라
+        # turn 스틱을 얼마나 꺾든 회전량이 fwd에만 종속되는 문제가 있었음.
+        # turn_gain을 곱해 turn 입력을 증폭한 뒤 fwd와 합산하고, 포화 시
+        # 좌우 비율(회전 반경)을 유지한 채 스케일다운한다.
+        left_raw = fwd + self.turn_gain * turn
+        right_raw = fwd - self.turn_gain * turn
+
+        max_mag = max(abs(left_raw), abs(right_raw), 1.0)
+        left_ratio = left_raw / max_mag
+        right_ratio = right_raw / max_mag
 
         self._latest_left_cmd = self.left_sign * left_ratio * self.max_speed_limit_dps
         self._latest_right_cmd = self.right_sign * right_ratio * self.max_speed_limit_dps

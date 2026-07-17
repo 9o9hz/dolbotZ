@@ -178,6 +178,24 @@ source ~/dolbotZ/install/setup.bash
 ros2 topic echo /motor_speed_cmd
 
 
+cansend can_drive 141#7600000000000000
+보호상태 해제
+
+
+cansend can_drive 141#9C00000000000000
+DATA[0]   0x9C          명령 코드
+DATA[1]   int8_t        모터 온도, °C
+DATA[2:3] int16_t       토크 전류
+DATA[4:5] int16_t       출력축 속도, deg/s
+DATA[6:7] uint16_t      출력축 엔코더 위치
+
+모터상태 확인 명령
+
+회전이 안 될 때, 
+cansend can_drive 141#9C00000000000000
+candump can_drive
+이거 실행하고 로그 찍어두기
+
 
 ### CAN 인터페이스 활성화 can_arm
 sudo ip link set can_arm type can bitrate 1000000
