@@ -102,14 +102,12 @@ class ManualJoyControlNode(Node):
         if abs(turn) < self.deadzone:
             turn = 0.0
 
-        left_raw = fwd + turn
-        right_raw = fwd - turn
-
-        # 둘 중 하나라도 -1~1을 벗어나면, 좌우 비율(회전 반경)을 유지한 채
-        # 두 값을 동일한 비율로 스케일 다운 (saturation으로 인한 조향 왜곡 방지)
-        max_mag = max(abs(left_raw), abs(right_raw), 1.0)
-        left_ratio = left_raw / max_mag
-        right_ratio = right_raw / max_mag
+        if turn != 0.0:
+            left_ratio = turn
+            right_ratio = -turn
+        else:
+            left_ratio = fwd
+            right_ratio = fwd
 
         self._latest_left_cmd = self.left_sign * left_ratio * self.max_speed_limit_dps
         self._latest_right_cmd = self.right_sign * right_ratio * self.max_speed_limit_dps
