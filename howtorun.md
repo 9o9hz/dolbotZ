@@ -185,34 +185,48 @@ IMU 자세 추정 + 마운트 파라미터 공용 모듈입니다.
 
 # 로봇 수동 조종 실행 가이드
 
+`can_driver`/`manual_joy_control`은 별도 워크스페이스가 아니라 `dolbotz`/`arm`과
+같은 워크스페이스(`/home/j/dolbotZ`) 소속이다. `cd`로 다른 디렉터리로 이동할
+필요 없이, 새 터미널을 열 때마다 아래 두 줄만 소스하면 어디서 실행하든 동작한다
+(코드를 안 고쳤다면 `colcon build`도 다시 할 필요 없음).
+
+```bash
+source /opt/ros/humble/setup.bash
+source /home/j/dolbotZ/install/setup.bash
+```
+
 ## 사전 준비 (최초 1회 또는 재부팅 후 매번)
 
 ### CAN 인터페이스 활성화
+```bash
 sudo ip link set can_drive type can bitrate 1000000
 sudo ip link set up can_drive
 
 # 확인
 ip -details link show can_drive
+```
 
 ## 1. CAN 드라이버 (터미널 1)
-cd ~/manual2_ws
-source install/setup.bash
+```bash
 ros2 run can_driver can_driver_node --ros-args -p can_channel:=can_drive
+```
 
 ## 2. 조이스틱 수동 조종 (터미널 2)
-cd ~/manual2_ws
-source install/setup.bash
+```bash
 ros2 launch manual_joy_control manual_control.launch.py
+```
 
 ## 확인용 (선택)
 
 ### 터미널 3 - 조이스틱 raw 입력 확인
-source ~/manual2_ws/install/setup.bash
+```bash
 ros2 topic echo /joy
+```
 
 ### 터미널 4 - 최종 모터 속도 명령 확인
-source ~/manual2_ws/install/setup.bash
+```bash
 ros2 topic echo /motor_speed_cmd
+```
 
 
 
