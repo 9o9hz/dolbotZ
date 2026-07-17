@@ -204,6 +204,11 @@ sudo ip link set up can_drive
 
 # 확인
 ip -details link show can_drive
+
+**가장 중요한 포인트**
+```bash
+cansend can_drive 141#7600000000000000 -> 보호상태 해제 명령
+cansend can_drive 141#9C00000000000000 -> 모터 상태 확인 명령
 ```
 
 ## 1. CAN 드라이버 (터미널 1)
