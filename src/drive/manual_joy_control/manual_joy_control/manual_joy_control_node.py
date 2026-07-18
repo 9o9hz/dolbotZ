@@ -11,9 +11,10 @@ class ManualJoyControlNode(Node):
 
         # ---- 파라미터 (실측 후 조정) ----
         # 탱크 조종: 왼쪽 스틱 상하 -> 좌모터, 오른쪽 스틱 상하 -> 우모터.
-        # [하림 수정] 실측값: 왼쪽 스틱 상하=축1, 오른쪽 스틱 상하=축3.
+        # [하림 수정] 실측값: 왼쪽 스틱 상하=축1. 오른쪽 스틱 상하는 축4가 맞음
+        # (축3은 오른쪽 스틱 좌우 - PS 계열 표준 매핑 기준).
         self.declare_parameter('axis_left_motor', 1)
-        self.declare_parameter('axis_right_motor', 3)
+        self.declare_parameter('axis_right_motor', 4)
         # [하림 수정] 직진/후진 홀드 버튼 - 세모(전진)/엑스(후진). arm 코드
         # (base_yaw_negative_button=0=X, base_yaw_positive_button=2=삼각형)에서
         # 이미 검증된 버튼 인덱스라 D-pad 축 추정보다 신뢰도 높음.
