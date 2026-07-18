@@ -578,12 +578,19 @@ hardware_interface::CallbackReturn DynamixelHardware::start()
 
   if (torque_enabled_comm_id_id_.size() > 0) {
     RCLCPP_INFO_STREAM(logger_, "Enabling torque for Dynamixels");
+    bool torque_enable_verified = false;
     for (int i = 0; i < 10; i++) {
       if (dxl_comm_->DynamixelEnable(torque_enabled_comm_id_id_) == DxlError::OK) {
+        torque_enable_verified = true;
         break;
       }
       RCLCPP_ERROR_STREAM(logger_, "Failed to enable torque for Dynamixels, retry...");
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (!torque_enable_verified) {
+      RCLCPP_FATAL_STREAM(
+        logger_, "Dynamixel start aborted: torque enable could not be verified for every motor");
+      return hardware_interface::CallbackReturn::ERROR;
     }
   }
 
@@ -640,6 +647,26 @@ hardware_interface::return_type DynamixelHardware::read(
 
   CalcTransmissionToJoint();
 
+  // Keep the published torque state synchronized with the physical registers.
+  // A Dynamixel can clear Torque Enable by itself after a protection event, so
+  // relying only on the last commanded value can falsely report that it is ON.
+  bool unexpected_torque_off = false;
+  for (const auto & transmission : hdl_trans_states_) {
+    for (size_t i = 0; i < transmission.interface_name_vec.size(); ++i) {
+      if (transmission.interface_name_vec.at(i) == "Torque Enable") {
+        const bool enabled = *transmission.value_ptr_vec.at(i) != 0.0;
+        dxl_torque_state_[{transmission.comm_id, transmission.id}] = enabled;
+        if (!enabled) {
+          unexpected_torque_off = true;
+          RCLCPP_ERROR_STREAM_THROTTLE(
+            logger_, clock_, 1000,
+            "Dynamixel torque unexpectedly OFF [ID:" <<
+              static_cast<int>(transmission.id) << "]");
+        }
+      }
+    }
+  }
+
   for (auto sensor : hdl_gpio_sensor_states_) {
     ReadSensorData(sensor);
   }
@@ -663,6 +690,12 @@ hardware_interface::return_type DynamixelHardware::read(
 
   if (rclcpp::ok()) {
     rclcpp::spin_some(this->get_node_base_interface());
+  }
+  if (unexpected_torque_off) {
+    // Publish the physical OFF/error state above, but do not automatically
+    // re-enable here: the external controller target may have moved while
+    // torque was off, which could cause a sudden jump.
+    return hardware_interface::return_type::ERROR;
   }
   return hardware_interface::return_type::OK;
 }
