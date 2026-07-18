@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Joy
-from std_msgs.msg import Float32MultiArray, Float32, String
+from std_msgs.msg import Float32MultiArray, String
 
 
 class ManualJoyControlNode(Node):
@@ -23,7 +23,10 @@ class ManualJoyControlNode(Node):
         self.declare_parameter('button_l1', 4)
         self.declare_parameter('button_r1', 5)
 
-        self.declare_parameter('default_speed_dps', 200.0)
+        # [하림 수정] 우측 모터가 힘이 덜 실려서 좌/우 초기 속도를 다르게 보정.
+        # L1/R1은 이 둘을 동시에(같은 step만큼) 올리고 내려서 좌우 간 오프셋은 유지한다.
+        self.declare_parameter('default_speed_dps_left', 200.0)
+        self.declare_parameter('default_speed_dps_right', 400.0)
         self.declare_parameter('speed_step_dps', 10.0)
         self.declare_parameter('min_speed_dps', 0.0)
         self.declare_parameter('max_speed_dps', 800.0)
@@ -49,7 +52,8 @@ class ManualJoyControlNode(Node):
         self.btn_l1 = p('button_l1').value
         self.btn_r1 = p('button_r1').value
 
-        self.max_speed_limit_dps = p('default_speed_dps').value
+        self.max_speed_limit_left = p('default_speed_dps_left').value
+        self.max_speed_limit_right = p('default_speed_dps_right').value
         self.step = p('speed_step_dps').value
         self.min_speed = p('min_speed_dps').value
         self.max_speed = p('max_speed_dps').value
@@ -83,14 +87,16 @@ class ManualJoyControlNode(Node):
 
         cmd_topic = p('cmd_topic').value
         self.cmd_pub = self.create_publisher(Float32MultiArray, cmd_topic, 10)
-        self.max_speed_pub = self.create_publisher(Float32, 'max_speed_dps', 10)
+        # [하림 수정] 좌우 속도 프리셋이 분리되면서 단일 Float32로는 둘 다 못 담아
+        # Float32MultiArray([left, right])로 변경.
+        self.max_speed_pub = self.create_publisher(Float32MultiArray, 'max_speed_dps', 10)
 
         rate = p('cmd_publish_rate_hz').value
         self.timer = self.create_timer(1.0 / rate, self.publish_cmd)
 
         self.get_logger().info(
-            f'Manual joy control started. default_speed={self.max_speed_limit_dps}dps, '
-            f'joy_topic={joy_topic}, cmd_topic={cmd_topic}'
+            f'Manual joy control started. default_speed left={self.max_speed_limit_left}dps '
+            f'right={self.max_speed_limit_right}dps, joy_topic={joy_topic}, cmd_topic={cmd_topic}'
         )
 
     def on_active_target(self, msg: String):
@@ -114,11 +120,15 @@ class ManualJoyControlNode(Node):
         l1 = msg.buttons[self.btn_l1] if len(msg.buttons) > self.btn_l1 else 0
 
         if r1 == 1 and self._prev_r1 == 0:
-            self.max_speed_limit_dps = min(self.max_speed_limit_dps + self.step, self.max_speed)
-            self.get_logger().info(f'Max speed -> {self.max_speed_limit_dps} dps')
+            self.max_speed_limit_left = min(self.max_speed_limit_left + self.step, self.max_speed)
+            self.max_speed_limit_right = min(self.max_speed_limit_right + self.step, self.max_speed)
+            self.get_logger().info(
+                f'Max speed -> left={self.max_speed_limit_left} right={self.max_speed_limit_right} dps')
         if l1 == 1 and self._prev_l1 == 0:
-            self.max_speed_limit_dps = max(self.max_speed_limit_dps - self.step, self.min_speed)
-            self.get_logger().info(f'Max speed -> {self.max_speed_limit_dps} dps')
+            self.max_speed_limit_left = max(self.max_speed_limit_left - self.step, self.min_speed)
+            self.max_speed_limit_right = max(self.max_speed_limit_right - self.step, self.min_speed)
+            self.get_logger().info(
+                f'Max speed -> left={self.max_speed_limit_left} right={self.max_speed_limit_right} dps')
 
         self._prev_r1 = r1
         self._prev_l1 = l1
@@ -145,8 +155,8 @@ class ManualJoyControlNode(Node):
             left_ratio = left_val
             right_ratio = right_val
 
-        self._latest_left_cmd = self.left_sign * left_ratio * self.max_speed_limit_dps
-        self._latest_right_cmd = self.right_sign * right_ratio * self.max_speed_limit_dps
+        self._latest_left_cmd = self.left_sign * left_ratio * self.max_speed_limit_left
+        self._latest_right_cmd = self.right_sign * right_ratio * self.max_speed_limit_right
 
     def publish_cmd(self):
         elapsed = (self.get_clock().now() - self.last_joy_time).nanoseconds / 1e9
@@ -165,8 +175,8 @@ class ManualJoyControlNode(Node):
         msg.data = [self._latest_left_cmd, self._latest_right_cmd]
         self.cmd_pub.publish(msg)
 
-        max_speed_msg = Float32()
-        max_speed_msg.data = self.max_speed_limit_dps
+        max_speed_msg = Float32MultiArray()
+        max_speed_msg.data = [self.max_speed_limit_left, self.max_speed_limit_right]
         self.max_speed_pub.publish(max_speed_msg)
 
 
