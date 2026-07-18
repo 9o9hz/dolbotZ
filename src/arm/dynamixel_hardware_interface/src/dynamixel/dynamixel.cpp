@@ -620,9 +620,20 @@ DxlError Dynamixel::DynamixelEnable(const std::vector<std::pair<uint8_t, uint8_t
     uint8_t comm_id = p.first;
     uint8_t id = p.second;
     if (dxl_info_.CheckDxlControlItem(comm_id, id, "Torque Enable") == false) {
-      continue;
+      fprintf(
+        stderr, "[comm_id:%03d][ID:%03d] Cannot verify Torque Enable: control item missing\n",
+        comm_id, id);
+      return DxlError::CANNOT_FIND_CONTROL_ITEM;
     }
-    if (torque_state_[{comm_id, id}] == TORQUE_OFF) {
+    uint32_t actual_torque_state = TORQUE_OFF;
+    if (ReadItem(comm_id, id, "Torque Enable", actual_torque_state) != DxlError::OK) {
+      fprintf(
+        stderr, "[comm_id:%03d][ID:%03d] Cannot read actual Torque Enable state\n",
+        comm_id, id);
+      return DxlError::ITEM_READ_FAIL;
+    }
+    torque_state_[{comm_id, id}] = actual_torque_state == TORQUE_ON;
+    if (actual_torque_state != TORQUE_ON) {
       if (WriteItem(comm_id, id, "Torque Enable", TORQUE_ON) < 0) {
         fprintf(
           stderr, "[comm_id:%03d][ID:%03d] Cannot write \"Torque On\" command!\n", comm_id,
@@ -632,6 +643,17 @@ DxlError Dynamixel::DynamixelEnable(const std::vector<std::pair<uint8_t, uint8_t
       torque_state_[{comm_id, id}] = TORQUE_ON;
       fprintf(stderr, "[comm_id:%03d][ID:%03d] Torque ON\n", comm_id, id);
     }
+    actual_torque_state = TORQUE_OFF;
+    if (ReadItem(comm_id, id, "Torque Enable", actual_torque_state) != DxlError::OK ||
+      actual_torque_state != TORQUE_ON)
+    {
+      torque_state_[{comm_id, id}] = TORQUE_OFF;
+      fprintf(
+        stderr, "[comm_id:%03d][ID:%03d] Torque Enable read-back verification failed\n",
+        comm_id, id);
+      return DxlError::ITEM_READ_FAIL;
+    }
+    torque_state_[{comm_id, id}] = TORQUE_ON;
   }
   return DxlError::OK;
 }

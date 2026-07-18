@@ -21,11 +21,14 @@ def generate_launch_description():
         DeclareLaunchArgument('timeout', default_value='0'),
         DeclareLaunchArgument('dxl_port_name', default_value='/dev/ttyUSB0'),
         DeclareLaunchArgument('dxl_baud_rate', default_value='1000000'),
-        DeclareLaunchArgument('joy_dev', default_value='/dev/input/js0'),
         # [하림 수정] drive/arm이 조이스틱 하나를 토글로 공유하는 구조라, joy_node는
         # 한쪽에서만 띄우면 됨. drive(manual_joy_control) 쪽을 먼저 띄웠다면
         # launch_joy:=false로 여기서는 끄기.
-        DeclareLaunchArgument('launch_joy', default_value='true'),
+        DeclareLaunchArgument(
+            'launch_joy',
+            default_value='true',
+            description='Launch joy_node from the arm bringup'),
+        DeclareLaunchArgument('joy_dev', default_value='/dev/input/js0'),
         DeclareLaunchArgument('control_toggle_button', default_value='9'),
         DeclareLaunchArgument('manual_mode_axis', default_value='7'),
         # Disabled: button 10 is reserved for the drive emergency stop.
