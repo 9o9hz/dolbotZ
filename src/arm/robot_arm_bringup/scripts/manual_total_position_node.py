@@ -23,9 +23,10 @@ class ManualTotalPositionNode(Node):
         # Manual command rates: RMD 0.1 rad/s, Dynamixel 0.15 rad/s.
         # Order: shoulder, elbow, wrist, gripper, base.
         self.declare_parameter('rates', [0.1, 0.1, 0.1, 0.15, 0.15])
-        # Calibrated RMD joint limits; keep the Dynamixel gripper/base limits unchanged.
-        self.declare_parameter('lower_limits', [-0.140, -0.436, 1.484, -2.3562, -3.1416])
-        self.declare_parameter('upper_limits', [1.361, 0.942, 4.259, 2.3562, 3.1416])
+        # Temporary test limits: RMD +/-720 deg, gripper +/-180 deg,
+        # and base rotation +/-180 deg until the limits are recalibrated.
+        self.declare_parameter('lower_limits', [-12.5664, -12.5664, -12.5664, -3.1416, -3.1416])
+        self.declare_parameter('upper_limits', [12.5664, 12.5664, 12.5664, 3.1416, 3.1416])
         self.declare_parameter('shoulder_axis', 3)
         self.declare_parameter('elbow_axis', 4)
         # Linux Xbox-style /joy mapping: D-pad left/right is axis 6.
