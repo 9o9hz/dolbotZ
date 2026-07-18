@@ -36,6 +36,10 @@ class SafetyManager(Node):
         self.control_enabled_pub = self.create_publisher(Bool, '/control/enabled', latched_qos)
         self.manual_enabled_pub = self.create_publisher(Bool, '/control/manual_enabled', latched_qos)
         self.semiauto_enabled_pub = self.create_publisher(Bool, '/control/semiauto_enabled', latched_qos)
+        # [하림 수정] drive와 arm이 조이스틱 하나를 토글로 공유하기 위한 포커스 상태.
+        # control_toggle_button(9번, arm OFF<->SEMIAUTO 토글과 동일 버튼)을 누르면
+        # 이 값도 같이 바뀐다 - arm이 켜지면 'arm', 꺼지면 'drive'.
+        self.active_target_pub = self.create_publisher(String, '/control/active_target', latched_qos)
         self.protective_stop_pub = self.create_publisher(
             Bool, '/control/protective_stop', latched_qos)
         self.estop_pub = self.create_publisher(Bool, '/emergency_stop', latched_qos)
@@ -77,6 +81,9 @@ class SafetyManager(Node):
         self.control_enabled_pub.publish(Bool(data=enabled))
         self.manual_enabled_pub.publish(Bool(data=self.mode == self.MANUAL))
         self.semiauto_enabled_pub.publish(Bool(data=self.mode == self.SEMIAUTO))
+        # [하림 수정] arm이 활성 상태(SEMIAUTO/MANUAL)면 조이스틱 포커스를 arm으로,
+        # OFF/ESTOP_LATCHED면 drive로 넘긴다.
+        self.active_target_pub.publish(String(data='arm' if enabled else 'drive'))
         self.get_logger().info(f'Operator control mode: {self.mode}')
 
     def trigger_estop(self):

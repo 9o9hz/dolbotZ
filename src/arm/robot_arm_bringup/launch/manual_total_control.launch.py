@@ -1,6 +1,7 @@
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
@@ -21,6 +22,10 @@ def generate_launch_description():
         DeclareLaunchArgument('dxl_port_name', default_value='/dev/ttyUSB0'),
         DeclareLaunchArgument('dxl_baud_rate', default_value='1000000'),
         DeclareLaunchArgument('joy_dev', default_value='/dev/input/js0'),
+        # [하림 수정] drive/arm이 조이스틱 하나를 토글로 공유하는 구조라, joy_node는
+        # 한쪽에서만 띄우면 됨. drive(manual_joy_control) 쪽을 먼저 띄웠다면
+        # launch_joy:=false로 여기서는 끄기.
+        DeclareLaunchArgument('launch_joy', default_value='true'),
         DeclareLaunchArgument('control_toggle_button', default_value='9'),
         DeclareLaunchArgument('manual_mode_axis', default_value='7'),
         # Disabled: button 10 is reserved for the drive emergency stop.
@@ -59,7 +64,8 @@ def generate_launch_description():
              parameters=[robot_description], output='screen'),
         control, state_spawner, spawn_in_order,
         Node(package='joy', executable='joy_node', name='joy_node',
-             parameters=[{'dev': LaunchConfiguration('joy_dev'), 'deadzone': 0.08}]),
+             parameters=[{'dev': LaunchConfiguration('joy_dev'), 'deadzone': 0.08}],
+             condition=IfCondition(LaunchConfiguration('launch_joy'))),
         Node(package='robot_arm_bringup', executable='safety_manager.py',
              name='safety_manager', output='screen', parameters=[{
                  'control_toggle_button': LaunchConfiguration('control_toggle_button'),

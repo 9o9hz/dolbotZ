@@ -70,6 +70,11 @@ class ManualTotalPositionNode(Node):
         mode_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        # [하림 수정] drive/arm 조이스틱 토글(/control/active_target)은 safety_manager가
+        # 관리하고, 여기서는 별도로 구독하지 않는다 - 이 노드는 이미 manual_enabled가
+        # MANUAL일 때만 True가 되고 MANUAL은 active_target=='arm'일 때만 도달 가능한
+        # 상태라서, manual_enabled 게이팅만으로 drive가 포커스를 가진 동안 이 노드가
+        # 움직이는 일은 생기지 않는다.
         self.create_subscription(
             Bool, '/control/manual_enabled', self.on_manual_enabled, mode_qos)
         self.create_subscription(

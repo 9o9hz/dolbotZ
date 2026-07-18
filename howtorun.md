@@ -171,11 +171,17 @@ ros2 launch manual_joy_control manual_control.launch.py
 
 ### 터미널 3 - 조이스틱 raw 입력 확인
 source ~/dolbotZ/install/setup.bash
+ros2 topic echo /joy
  
 
 ### 터미널 4 - 최종 모터 속도 명령 확인
 source ~/dolbotZ/install/setup.bash
 ros2 topic echo /motor_speed_cmd
+
+### 터미널 5 - drive/arm 중 조이스틱이 지금 어디에 반응 중인지 확인
+source ~/dolbotZ/install/setup.bash
+ros2 topic echo /control/active_target
+# Options(9번) 버튼으로 drive <-> arm 토글. data: drive 또는 data: arm 으로 표시됨
 
 
 cansend can_drive 141#7600000000000000
@@ -202,7 +208,10 @@ sudo ip link set can_arm type can bitrate 1000000
 sudo ip link set up can_arm
 ip -details link show can_arm
 #
-ros2 launch robot_arm_bringup robot_arm_bringup.launch.py 
+ros2 launch robot_arm_bringup robot_arm_bringup.launch.py launch_joy:=false
+# drive 쪽 manual_control.launch.py에서 joy_node를 이미 띄웠으므로 launch_joy:=false로
+# 중복 실행 방지 (drive를 안 띄우고 arm만 단독으로 쓸 거면 이 인자 빼면 됨)
+-> 선주야 ros2 launch robot_arm_bringup robot_arm_bringup.launch.py까지만 치면 됨.
 
 # 로봇팔 D435I — arm_pickup 전용
 ros2 run realsense2_camera realsense2_camera_node --ros-args -p serial_no:="'339222071362'" -p enable_color:=true -p enable_depth:=true -p align_depth.enable:=true -p enable_infra1:=false -p enable_infra2:=false -p enable_gyro:=false -p enable_accel:=false
