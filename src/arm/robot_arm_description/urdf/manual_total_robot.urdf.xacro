@@ -50,7 +50,7 @@
   <joint name="base_rotate_joint" type="revolute">
     <parent link="base_link"/><child link="base_yaw_link"/>
     <origin xyz="0 0 ${sh_off}" rpy="0 0 0"/><axis xyz="0 0 1"/>
-    <limit lower="-3.1416" upper="3.1416" effort="3.1" velocity="2.618"/>
+    <limit lower="-1.5708" upper="1.5708" effort="3.1" velocity="2.618"/>
     <dynamics damping="0.05" friction="0.02"/>
   </joint>
   <link name="shoulder_link">
