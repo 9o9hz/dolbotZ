@@ -26,7 +26,7 @@ class ManualJoyControlNode(Node):
         # [하림 수정] 우측 모터가 힘이 덜 실려서 좌/우 초기 속도를 다르게 보정.
         # L1/R1은 이 둘을 동시에(같은 step만큼) 올리고 내려서 좌우 간 오프셋은 유지한다.
         self.declare_parameter('default_speed_dps_left', 200.0)
-        self.declare_parameter('default_speed_dps_right', 400.0)
+        self.declare_parameter('default_speed_dps_right', 200.0)
         self.declare_parameter('speed_step_dps', 10.0)
         self.declare_parameter('min_speed_dps', 0.0)
         self.declare_parameter('max_speed_dps', 800.0)
