@@ -24,9 +24,9 @@ class ManualTotalPositionNode(Node):
         # Order: shoulder, elbow, wrist, gripper, base.
         self.declare_parameter('rates', [0.1, 0.1, 0.1, 0.15, 0.15])
         # Temporary test limits: RMD +/-720 deg, gripper +/-180 deg,
-        # and base rotation +/-90 deg (180 deg total physical travel).
-        self.declare_parameter('lower_limits', [-12.5664, -12.5664, -12.5664, -3.1416, -1.5708])
-        self.declare_parameter('upper_limits', [12.5664, 12.5664, 12.5664, 3.1416, 1.5708])
+        # and base rotation 90 to 270 deg (180 deg total physical travel).
+        self.declare_parameter('lower_limits', [-12.5664, -12.5664, -12.5664, -3.1416, 1.5708])
+        self.declare_parameter('upper_limits', [12.5664, 12.5664, 12.5664, 3.1416, 4.7124])
         self.declare_parameter('shoulder_axis', 3)
         self.declare_parameter('elbow_axis', 4)
         # Linux Xbox-style /joy mapping: D-pad left/right is axis 6.
