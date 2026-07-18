@@ -23,10 +23,10 @@ class ManualTotalPositionNode(Node):
         # Manual command rates: RMD 0.1 rad/s, Dynamixel 0.15 rad/s.
         # Order: shoulder, elbow, wrist, gripper, base.
         self.declare_parameter('rates', [0.1, 0.1, 0.1, 0.15, 0.15])
-        # Temporary test limits: RMD +/-720 deg, gripper +/-180 deg,
-        # and base rotation 90 to 270 deg (180 deg total physical travel).
-        self.declare_parameter('lower_limits', [-12.5664, -12.5664, -12.5664, -3.1416, 1.5708])
-        self.declare_parameter('upper_limits', [12.5664, 12.5664, 12.5664, 3.1416, 4.7124])
+        # Temporary manual-command limits: RMD and base +/-720 deg,
+        # gripper +/-180 deg. The URDF retains the physical joint limits.
+        self.declare_parameter('lower_limits', [-12.5664, -12.5664, -12.5664, -3.1416, -12.5664])
+        self.declare_parameter('upper_limits', [12.5664, 12.5664, 12.5664, 3.1416, 12.5664])
         self.declare_parameter('shoulder_axis', 3)
         self.declare_parameter('elbow_axis', 4)
         # Linux Xbox-style /joy mapping: D-pad left/right is axis 6.
@@ -86,8 +86,11 @@ class ManualTotalPositionNode(Node):
         self.positions.update(zip(msg.name, msg.position))
         self.velocities.update(zip(msg.name, msg.velocity))
         if self.target is None and all(j in self.positions for j in self.JOINTS):
-            self.target = [min(max(self.positions[j], self.lower[i]), self.upper[i]) for i, j in enumerate(self.JOINTS)]
-            self.get_logger().info('All joint targets initialized from /joint_states; manual commands are now safe to publish.')
+            # Match the RMD position-interface startup behavior: hold the exact
+            # measured positions instead of moving to a software boundary.
+            self.target = [self.positions[j] for j in self.JOINTS]
+            self.get_logger().info(
+                'All joint targets initialized at measured positions; manual commands are now safe to publish.')
 
     def on_joy(self, msg):
         self.joy = msg
