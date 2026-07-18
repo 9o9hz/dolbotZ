@@ -23,6 +23,10 @@ class ManualJoyControlNode(Node):
         self.declare_parameter('button_backward', 0)  # 엑스(X)
         self.declare_parameter('button_l1', 4)
         self.declare_parameter('button_r1', 5)
+        # 제자리 회전 홀드 버튼 - 좌우 모터를 반대 부호로 구동해 자리에서 회전.
+        # arm 코드에서 이미 검증된 버튼 인덱스(1=Circle, 3=Square)를 재사용.
+        self.declare_parameter('button_rotate_left', 3)   # 네모(Square)
+        self.declare_parameter('button_rotate_right', 1)  # 동그라미(Circle)
 
         # [하림 수정] 우측 모터가 힘이 덜 실려서 좌/우 초기 속도를 다르게 보정.
         # L1/R1은 이 둘을 동시에(같은 step만큼) 올리고 내려서 좌우 간 오프셋은 유지한다.
@@ -52,6 +56,8 @@ class ManualJoyControlNode(Node):
         self.btn_backward = p('button_backward').value
         self.btn_l1 = p('button_l1').value
         self.btn_r1 = p('button_r1').value
+        self.btn_rotate_left = p('button_rotate_left').value
+        self.btn_rotate_right = p('button_rotate_right').value
 
         self.max_speed_limit_left = p('default_speed_dps_left').value
         self.max_speed_limit_right = p('default_speed_dps_right').value
@@ -136,6 +142,8 @@ class ManualJoyControlNode(Node):
 
         forward_held = msg.buttons[self.btn_forward] if len(msg.buttons) > self.btn_forward else 0
         backward_held = msg.buttons[self.btn_backward] if len(msg.buttons) > self.btn_backward else 0
+        rotate_left_held = msg.buttons[self.btn_rotate_left] if len(msg.buttons) > self.btn_rotate_left else 0
+        rotate_right_held = msg.buttons[self.btn_rotate_right] if len(msg.buttons) > self.btn_rotate_right else 0
 
         if forward_held and not backward_held:
             # 직진/후진 버튼이 스틱보다 우선 - 정확한 직진이 필요할 때 사용
@@ -143,6 +151,13 @@ class ManualJoyControlNode(Node):
             right_ratio = 1.0
         elif backward_held and not forward_held:
             left_ratio = -1.0
+            right_ratio = -1.0
+        elif rotate_left_held and not rotate_right_held:
+            # 좌우 모터를 반대 부호로 구동 -> 제자리 좌회전
+            left_ratio = -1.0
+            right_ratio = 1.0
+        elif rotate_right_held and not rotate_left_held:
+            left_ratio = 1.0
             right_ratio = -1.0
         else:
             left_val = msg.axes[self.axis_left_motor] if len(msg.axes) > self.axis_left_motor else 0.0
