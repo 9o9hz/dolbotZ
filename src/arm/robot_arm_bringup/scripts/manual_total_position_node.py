@@ -22,7 +22,7 @@ class ManualTotalPositionNode(Node):
         # Operation rates (RMD: shoulder/elbow/wrist, Dynamixel: gripper/base).
         # Manual command rates: RMD 0.1 rad/s, Dynamixel 0.15 rad/s.
         # Order: shoulder, elbow, wrist, gripper, base.
-        self.declare_parameter('rates', [0.1, 0.1, 0.1, 0.15, 0.15])
+        self.declare_parameter('rates', [0.1, 0.1, 0.1, 0.3, 0.1])
         # Temporary manual-command limits: RMD and base +/-720 deg,
         # gripper +/-180 deg. The URDF retains the physical joint limits.
         self.declare_parameter('lower_limits', [-12.5664, -12.5664, -12.5664, -3.1416, -12.5664])
