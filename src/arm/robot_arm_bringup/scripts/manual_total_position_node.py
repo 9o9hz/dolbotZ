@@ -36,12 +36,10 @@ class ManualTotalPositionNode(Node):
         # Linux Xbox-style /joy mapping: D-pad left/right is axis 6.
         self.declare_parameter('wrist_axis', 6)
         self.declare_parameter('axis_threshold', 0.5)
-        # Actual arm gamepad mapping: gripper = Square/Circle,
-        # base yaw = Triangle/Cross. Keep these Linux /joy indices unchanged.
-        self.declare_parameter('gripper_positive_button', 1)  # Square
-        self.declare_parameter('gripper_negative_button', 3)  # Circle
-        self.declare_parameter('base_yaw_positive_button', 2)  # Triangle
-        self.declare_parameter('base_yaw_negative_button', 0)  # Cross
+        self.declare_parameter('gripper_positive_button', 1)
+        self.declare_parameter('gripper_negative_button', 3)
+        self.declare_parameter('base_yaw_positive_button', 2)
+        self.declare_parameter('base_yaw_negative_button', 0)
         self.declare_parameter('joy_timeout', 0.5)
         self.declare_parameter('protective_stop_deceleration_time', 0.5)    #0.5초간 선형 감소 (1초 동안 감속을 원하면 이거 값 0.5->1로 변경)
 
